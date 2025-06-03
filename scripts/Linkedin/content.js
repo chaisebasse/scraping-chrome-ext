@@ -1,5 +1,5 @@
 // Fonction utilitaire pour attendre l'apparition d'un élément dans le DOM
-function waitForElement(selector, timeout = 10000) {
+function waitForElement(selector, timeout = 20000) {
   return new Promise((resolve, reject) => {
     const el = document.querySelector(selector);
     if (el) return resolve(el);
@@ -20,8 +20,6 @@ function waitForElement(selector, timeout = 10000) {
     }, timeout);
   });
 }
-
-
 
 // Envoie une requête de téléchargement au script d'arrière-plan avec l'URL blob et le nom de fichier
 function sendDownloadRequest(blobUrl, filename) {
@@ -63,6 +61,7 @@ function watchForBlobUrl(firstName, lastName) {
           });
 
           obs.disconnect();
+          if (typeof callback === "function") callback();
           return;
         }
       }
@@ -128,8 +127,17 @@ function simulateResumeDownloadClick() {
       }
     }
 
-    // Clic simulé sur le bouton de téléchargement
+    // Étape 1 : Attendre et cliquer sur l'onglet "Pièces jointes"
+    await waitForElement('[data-test-navigation-list-item]');
+    const attachmentsTab = await waitForElement('[data-live-test-profile-attachments-tab]');
+    attachmentsTab.click();
+    console.log("[LinkedIn Recruiter] Onglet 'Pièces jointes' cliqué");
+
+    // Étape 2 : Attendre que les pièces jointes apparaissent
     await waitForElement("[data-test-previewable-attachment]");
+    console.log("[LinkedIn Recruiter] Pièces jointes détectées");
+
+    // Étape 3 : Simuler le téléchargement du CV
     simulateResumeDownloadClick();
 
     // Récupération des données de profil
