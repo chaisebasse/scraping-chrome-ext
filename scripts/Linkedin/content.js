@@ -37,31 +37,38 @@ function sendDownloadRequest(blobUrl, filename) {
 }
 
 // Observe les mutations DOM pour détecter une URL blob générée après le clic sur le bouton de téléchargement
-function watchForBlobUrl(firstName, lastName) {
+function watchForBlobUrl(firstName, lastName, callback) {
   const observer = new MutationObserver((mutations, obs) => {
     for (const mutation of mutations) {
       for (const node of mutation.addedNodes) {
         if (node.nodeType !== 1) continue;
 
-        const link = node.matches?.("a[download][href^='blob:']") ? node : node.querySelector?.("a[download][href^='blob:']");
-        const iframe = node.matches?.("iframe[src^='blob:']") ? node : node.querySelector?.("iframe[src^='blob:']");
+        const blobCandidate = node.matches?.("a[download], iframe, object, embed") ? node : node.querySelector?.("a[download], iframe, object, embed");
+        const src = blobCandidate?.src || blobCandidate?.data || blobCandidate?.href;
 
-        const blobUrl = link?.href || iframe?.src;
-        if (blobUrl) {
-          console.log("[LinkedIn Recruiter] URL blob détectée :", blobUrl);
+        if (src?.startsWith("blob:")) {
+          console.log("[LinkedIn Recruiter] Blob URL detected:", src);
 
-          const safeFirstName = firstName?.trim().replace(/\s+/g, "_") || "First";
-          const safeLastName = lastName?.trim().replace(/\s+/g, "_") || "Last";
-          const filename = `LinkedIn/LinkedIn_${safeFirstName}_${safeLastName}_resume.pdf`;
+          // Fetch + convert to base64
+          fetch(src)
+            .then(response => response.blob())
+            .then(blob => {
+              const reader = new FileReader();
+              reader.onloadend = () => {
+                const base64Data = reader.result;
+                chrome.storage.local.set({ linkedinCv: base64Data }, () => {
+                  console.log("[LinkedIn Recruiter] CV saved in chrome.storage.local");
 
-          chrome.runtime.sendMessage({
-            action: "downloadResume",
-            blobUrl,
-            filename
-          });
+                  if (typeof callback === "function") callback();
+                });
+              };
+              reader.readAsDataURL(blob);
+            })
+            .catch(err => {
+              console.error("[LinkedIn Recruiter] Failed to fetch blob:", err);
+            });
 
           obs.disconnect();
-          if (typeof callback === "function") callback();
           return;
         }
       }
