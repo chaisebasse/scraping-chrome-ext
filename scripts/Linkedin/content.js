@@ -145,7 +145,7 @@ function simulateResumeDownloadClick() {
     console.log("[LinkedIn Recruiter] Pièces jointes détectées");
 
     // Étape 3 : Simuler le téléchargement du CV
-    simulateResumeDownloadClick();
+    // simulateResumeDownloadClick();
 
     // Récupération des données de profil
     const emailSpan = document.querySelector("span[data-test-contact-email-address]");
@@ -165,23 +165,32 @@ function simulateResumeDownloadClick() {
     // Envoi au background pour insertion dans le formulaire MP
     if (firstName && lastName) {
       // Watch for the blob, and insert data *after* resume is fully downloaded
-      watchForBlobUrl(firstName, lastName, () => {
-        chrome.runtime.sendMessage({
-          action: "openMPAndInsertData",
-          scrapedData: scrapedData,
-          deferInsert: true
-        });
-      });
+      // watchForBlobUrl(firstName, lastName, () => {
+      //   chrome.runtime.sendMessage({
+      //     action: "openMPAndInsertData",
+      //     scrapedData: scrapedData,
+      //     deferInsert: true
+      //   });
+      // });
+
+      console.log("sending...");
 
       // Open MP tab immediately (data will be injected later)
+
       chrome.runtime.sendMessage({
-        action: "openMPAndInsertData",
-        scrapedData: scrapedData,
+        action: "submit_candidate_data",
+        scrapedData,
         deferInsert: true
+      }, (response) => {
+        if (chrome.runtime.lastError) {
+          console.error("Message failed:", chrome.runtime.lastError.message);
+        } else if (response.status === "success") {
+          console.log("[content] Candidate submitted successfully!");
+        } else {
+          console.error("[content] Submission failed:", response.message);
+        }
       });
-
     }
-
   } catch (error) {
     console.error("[LinkedIn Recruiter] Échec du scraping :", error);
   }
