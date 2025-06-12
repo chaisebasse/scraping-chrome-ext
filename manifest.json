@@ -29,8 +29,16 @@
       ],
       "js": ["scripts/Linkedin/content.js"],
       "run_at": "document_idle"
+    },
+    {
+      "matches": [
+        "http://s-tom-1:90/MeilleurPilotage/*"
+      ],
+      "js": ["scripts/Insert/content.js"],
+      "run_at": "document_idle",
+      "world": "MAIN"
     }
-  ],
+    ],
 
   "background": {
     "service_worker": "scripts/background.js",
@@ -42,13 +50,13 @@
     "scripting",
     "tabs",
     "downloads",
-    "activeTab"
+    "activeTab",
+    "webRequest"
   ],
 
   "host_permissions": [
     "https://www.linkedin.com/*",
-    "http://s-tom-1:90/MeilleurPilotage/servlet/ListeEtats?TEMPLATE=RECR_ListeRecherche*",
-    "file:///*"
+    "http://s-tom-1:90/MeilleurPilotage/*"
   ],
 
   "web_accessible_resources": [
@@ -60,5 +68,9 @@
       ],
       "matches": ["<all_urls>"]
     }
-  ]
+  ],
+
+  "content_security_policy": {
+    "extension_pages": "script-src 'self'; object-src 'self'"
+  }
 }

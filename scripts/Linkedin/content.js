@@ -164,24 +164,18 @@ function simulateResumeDownloadClick() {
 
     // Envoi au background pour insertion dans le formulaire MP
     if (firstName && lastName) {
-      // Watch for the blob, and insert data *after* resume is fully downloaded
-      // watchForBlobUrl(firstName, lastName, () => {
-      //   chrome.runtime.sendMessage({
-      //     action: "openMPAndInsertData",
-      //     scrapedData: scrapedData,
-      //     deferInsert: true
-      //   });
-      // });
 
       console.log("sending...");
 
       // Open MP tab immediately (data will be injected later)
 
       chrome.runtime.sendMessage({
-        action: "submit_candidate_data",
+        action: "send_candidate_data",
         scrapedData,
         deferInsert: true
       }, (response) => {
+        console.log("Répnse de back", response);
+        console.log("echo toto");
         if (chrome.runtime.lastError) {
           console.error("Message failed:", chrome.runtime.lastError.message);
         } else if (response.status === "success") {
@@ -194,4 +188,10 @@ function simulateResumeDownloadClick() {
   } catch (error) {
     console.error("[LinkedIn Recruiter] Échec du scraping :", error);
   }
+
+  await new Promise(r => setTimeout(r, 7000));
+
+  console.log("Bien arrivé");
+
+  return true;
 })();

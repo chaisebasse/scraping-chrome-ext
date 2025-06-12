@@ -41,31 +41,105 @@ async function uploadPdfToMP(pdfBlob, fk) {
   return match?.[1] || null;
 }
 
-// Récupère les données envoyées par le background (injection automatique par tab creation)
-chrome.runtime.onMessage.addListener(async (message, sender, sendResponse) => {
-  if (message.action === "insertLinkedinData") {
-    const { name, lastName, phone, email } = message;
+/**
+ * Simulates a key press (default: ArrowDown) on the last name input to trigger autocomplete.
+ */
+function pressKeyOnLastNameInput(key = "ArrowDown") {
+  const input = document.querySelector('input[name="MP\\:NOM"]');
+  if (!input) return;
+  input.focus();
+  input.dispatchEvent(new KeyboardEvent("keydown", { key, bubbles: true }));
+  input.dispatchEvent(new KeyboardEvent("keyup", { key, bubbles: true }));
+}
 
-    console.log("[Insert] Données reçues :", message);
+/**
+ * Returns a mapping of scraped data keys to form input names.
+ */
+function getFormInputMapping() {
+  return {
+    lastName: "MP:NOM",
+    name: "MP:PREN",
+    phone: "MP:TELE",
+    email: "MP:MAIL",
+    publicProfileUrl: "MP:COMM_CV",
+  };
+}
 
-    try {
-      // // Upload the PDF directly via POST
-      // const pk = await uploadPdfToMP(cvBlob, fk);
-      // if (pk) {
-      //   console.log("[Insert] ✅ PDF uploaded successfully with pk:", pk);
-      //   // Optional: insert pk into a hidden input if needed
-      //   // const pkInput = document.createElement("input");
-      //   // pkInput.type = "hidden";
-      //   // pkInput.name = "uploaded_cv_pk";
-      //   // pkInput.value = pk;
-      //   // document.body.appendChild(pkInput);
-      // } else {
-      //   console.warn("[Insert] ⚠️ PDF upload failed");
-      //   alert("⚠️ Le CV n'a pas pu être téléversé automatiquement.");
-      // }
-
-    } catch (err) {
-      console.error("[Insert] ❌ Erreur pendant le remplissage ou le téléversement :", err);
-    }
+/**
+ * Populates an individual input field if found.
+ */
+function populateInput(inputName, value) {
+  const input = document.querySelector(`input[name="${inputName}"]`);
+  if (input && value) {
+    input.value = value;
+    input.dispatchEvent(new Event("input", { bubbles: true }));
+    input.dispatchEvent(new Event("change", { bubbles: true }));
   }
-});
+}
+
+/**
+ * Iterates over the mapping and fills in the form inputs.
+ */
+function fillFormFields(scrapedData) {
+  const mapping = getFormInputMapping();
+
+  const testValues = {
+    lastName: "TestNom",
+    name: "TestPrenom",
+    phone: "0600000000",
+    email: "test@example.com",
+    publicProfileUrl: "https://linkedin.com/in/test",
+  };
+
+  for (const [dataKey, inputName] of Object.entries(mapping)) {
+    populateInput(inputName, testValues[dataKey]);
+    // populateInput(inputName, scrapedData[dataKey]);
+  }
+
+  console.log("Form fields populated.");
+}
+
+/**
+ * Finalizes the form interaction: triggers key event then submits.
+ */
+async function finalizeFormSubmission() {
+  pressKeyOnLastNameInput();
+  await wait(1000); // Wait for any autocomplete/ajax logic to settle
+
+  if (window.oF && typeof window.oF.submit === "function") {
+    console.log("Submitting form via oF.submit()");
+    window.oF.submit();
+  } else {
+    console.warn("oF.submit() not available.");
+  }
+}
+
+/**
+ * Returns a promise that resolves after `ms` milliseconds.
+ */
+function wait(ms) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+/**
+ * Handles the main logic when data is received from the background script.
+ */
+async function handleCandidateDataSubmission(payload) {
+  fillFormFields(payload);
+  await finalizeFormSubmission();
+}
+
+/**
+ * Listen for messages from the extension.
+ */
+function setupExtensionListener() {
+  window.addEventListener("FROM_EXTENSION", (event) => {
+    const { action, payload } = event.detail || {};
+    if (action === "submit_candidate_data") {
+      handleCandidateDataSubmission(payload);
+    }
+  });
+}
+
+// Initialize
+setupExtensionListener();

@@ -1,106 +1,100 @@
-function encodeForm(data) {
-  return Object.entries(data)
-    .map(([key, val]) => `${encodeURIComponent(key)}=${encodeURIComponent(val)}`)
-    .join("&");
-}
+export function handleInsertToMP() {
+  let pendingCandidate = null;
+  let capturedCvUrl = null;
 
-async function submitCandidate(scrapedData, fk) {
-  const today = new Date().toLocaleDateString("fr-FR");
+  chrome.runtime.onMessage.addListener(async (message, sender, sendResponse) => {
+    if (message.action !== "send_candidate_data") {
+      sendResponse({ success: false, message: `action inconnue ${message.action}` });
+      return;
+    }
 
-  const payload = {
-    CONVERSATION: "RECR_GestionCandidat",
-    ACTION: "CREE",
-    MAJ: "O",
-    ID_VISI_POIN: fk, // or set as needed
-    "MP:ECRAN": "EcanTaches",
-    "MP:ACTION": "CREE",
-    "MP:SUPP_FICH": 'N',
-    "MP:ID_RECH": scrapedData.recruitmentId,
-    "MP:CIVI": scrapedData.civility || "Mr",
-    "MP:NOM": scrapedData.lastName,
-    "MP:PREN": scrapedData.firstName,
-    "MP:TELE": scrapedData.phone,
-    "MP:MAIL": scrapedData.email,
-    "MP:ID_STAT": 5,
-    "MP:DATE_RECE_CV": today,
-    "MP:COMM_CV": scrapedData.cvNote || "",
+    pendingCandidate = message.scrapedData;
 
-    // Optional placeholders
-    "MP:COMM_ENTR_OPER": "{MP:COMM_ENTR_OPER}",
-    "MP:COMM_ENTR_MANA": "{MP:COMM_ENTR_MANA}",
-    "MP:COMM_ENTR_CHAR": "{MP:COMM_ENTR_CHAR}",
-    "MP:COMM_ENTR_FINA": "{MP:COMM_ENTR_FINA}",
-  };
+    // If CV URL already captured, send everything now
+    if (capturedCvUrl) {
+      pendingCandidate.cvUrl = capturedCvUrl;
+      await openOrSendToMp(pendingCandidate);
+      capturedCvUrl = null;
+      pendingCandidate = null;
+      sendResponse({ success: true });
+      return;
+    }
 
-  const encodedBody = encodeForm(payload);
-
-  const response = await fetch("http://s-tom-1:90/MeilleurPilotage/servlet/Gestion", {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/x-www-form-urlencoded",
-      "Referer": "http://s-tom-1:90/MeilleurPilotage/servlet/Gestion?CONVERSATION=RECR_GestionCandidat&ACTION=CREE&MAJ=N"
-    },
-    body: encodedBody,
-    credentials: "include", // important for session cookies
+    // Else: wait for CV capture, so response is deferred
+    sendResponse({ success: true, message: "Waiting for CV URL..." });
   });
 
-  const result = await response.text();
-  console.log("MP form response:", result);
+  // Intercept CV link
+  chrome.webRequest.onBeforeRequest.addListener(
+    (details) => {
+      if (
+        details.url.includes("linkedin.com/dms/prv/document/media") &&
+        details.url.includes("recruiter-candidate-document-pdf-analyzed")
+      ) {
+        capturedCvUrl = details.url;
+        console.log("CV URL intercepted:", capturedCvUrl);
 
-  if (!response.ok) throw new Error("MP form submission failed");
+        // If candidate data was already received
+        if (pendingCandidate) {
+          pendingCandidate.cvUrl = capturedCvUrl;
+          openOrSendToMp(pendingCandidate);
+          capturedCvUrl = null;
+          pendingCandidate = null;
+        }
+      }
+    },
+    { urls: ["<all_urls>"] },
+    ["requestBody"]
+  );
 }
 
-export function handleInsertToMP() {
-  chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
-    // Case 1: Open MP form and inject LinkedIn data into it
-    if (message.action === "openMPAndInsertData") {
-      const { scrapedData } = message;
+// Reusable MP tab opening logic
+async function openOrSendToMp(scrapedData) {
+  const mpFormUrl = "http://s-tom-1:90/MeilleurPilotage/servlet/Gestion?CONVERSATION=RECR_GestionCandidat&ACTION=CREE&MAJ=N";
 
-      console.log("[backgroundInsert] Received data for MP insertion:", scrapedData);
+  let tab_id = await findExistingTab(mpFormUrl);
+  if (!tab_id) {
+    tab_id = await createTab(mpFormUrl);
+  }
 
-      chrome.tabs.create({
-        url: "http://s-tom-1:90/MeilleurPilotage/servlet/Gestion?CONVERSATION=RECR_GestionCandidat&ACTION=CREE&MAJ=N"
-      }, (newTab) => {
-        if (!newTab.id) return;
+  if (tab_id) {
+    await sendToPage(tab_id, "submit_candidate_data", scrapedData);
+  } else {
+    console.error("Impossible d'ouvrir l'onglet MP");
+  }
+}
 
-        chrome.scripting.executeScript({
-          target: { tabId: newTab.id },
-          files: ["scripts/Insert/content.js"]
-        }, () => {
-          chrome.tabs.sendMessage(newTab.id, {
-            action: "insertLinkedinData",
-            ...scrapedData
-          });
-        });
-      });
+function findExistingTab(url) {
+  return new Promise((resolve) => {
+    chrome.tabs.query({}, (tabs) => {
+      const existingTab = tabs.find(tab => tab.url && tab.url.includes(url));
+      resolve(existingTab?.id);
+    });
+  });
+}
 
-      return true; // keeps sendResponse valid
-    }
+function createTab(url) {
+  return new Promise((resolve) => {
+    chrome.tabs.create({ url, active: true }, (new_tab) => {
+      const listener = (id, { status }) => {
+        if (id === new_tab.id && status === "complete") {
+          chrome.tabs.onUpdated.removeListener(listener);
+          resolve(id);
+        }
+      };
+      chrome.tabs.onUpdated.addListener(listener);
+    });
+  });
+}
 
-    // Case 2: Submit candidate data via POST
-    if (message.action === "submit_candidate_data") {
-      const scrapedData = message.scrapedData;
-      const fk = 13606;
-
-      // Open the MP page before submitting
-      chrome.tabs.create({
-        url: "http://s-tom-1:90/MeilleurPilotage/servlet/Gestion?CONVERSATION=RECR_GestionCandidat&ACTION=CREE&MAJ=N"
-      }, (tab) => {
-        console.log("MP form tab opened with ID:", tab.id);
-
-        // Now submit the candidate
-        submitCandidate(scrapedData, fk)
-          .then(() => {
-            console.log("bien envoyé");
-            sendResponse({ status: "success" });
-          })
-          .catch(err => {
-            console.error("[backgroundInsert] Submission error:", err);
-            sendResponse({ status: "error", message: err.message });
-          });
-      });
-
-      return true; // keep sendResponse valid asynchronously
-    }
+function sendToPage(tabId, action, payload) {
+  return chrome.scripting.executeScript({
+    target: { tabId },
+    func: (action, payload) => {
+      window.dispatchEvent(new CustomEvent("FROM_EXTENSION", {
+        detail: { action, payload }
+      }));
+    },
+    args: [action, payload]
   });
 }
