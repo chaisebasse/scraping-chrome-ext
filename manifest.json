@@ -37,8 +37,13 @@
       "js": ["scripts/Insert/content.js"],
       "run_at": "document_idle",
       "world": "MAIN"
+    },
+    {
+      "matches": ["http://s-tom-1:90/MeilleurPilotage/servlet/Gestion*"],
+      "js": ["scripts/Insert/postSubmitRedirect.js"],
+      "run_at": "document_idle"
     }
-    ],
+  ],
 
   "background": {
     "service_worker": "scripts/background.js",

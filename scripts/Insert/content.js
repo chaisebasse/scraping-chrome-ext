@@ -109,9 +109,25 @@ async function finalizeFormSubmission() {
   if (window.oF && typeof window.oF.submit === "function") {
     console.log("Submitting form via oF.submit()");
     window.oF.submit();
+
+    const internalNumber = extractInternalNumber();
+
+    sessionStorage.setItem("justSubmittedCandidateForm", "true");
   } else {
     console.warn("oF.submit() not available.");
   }
+}
+
+function extractInternalNumber() {
+  const container = document.querySelector("#FORM_PRIN");
+  if (!container) return null;
+
+  const firstDiv = container.querySelector("div");
+  if (!firstDiv) return null;
+
+  const text = firstDiv.textContent || "";
+  const match = text.match(/Numéro interne:\s*(\d+)/i);
+  return match ? match[1] : null;
 }
 
 /**
