@@ -1,58 +1,12 @@
-function createObserver(selector, resolve) {
-  const observer = new MutationObserver(() => {
-    const element = document.querySelector(selector);
-    if (element) {
-      observer.disconnect();
-      resolve(element);
-    }
-  });
-
-  observer.observe(document.body, { childList: true, subtree: true });
-  return observer;
-}
-
-function createTimeout(selector, timeout, observer, reject) {
-  return setTimeout(() => {
-    observer.disconnect();
-    reject(new Error(`Timeout: Élément ${selector} introuvable`));
-  }, timeout);
-}
-
-function waitForElement(selector, timeout = 20000) {
-  return new Promise((resolve, reject) => {
-    const existingElement = document.querySelector(selector);
-    if (existingElement) return resolve(existingElement);
-
-    const observer = createObserver(selector, resolve);
-
-    const timeoutId = setTimeout(() => {
-      observer.disconnect();
-      reject(new Error(`Timeout: Élément ${selector} introuvable`));
-    }, timeout);
-
-    const originalResolve = resolve;
-    resolve = (element) => {
-      clearTimeout(timeoutId);
-      observer.disconnect();
-      originalResolve(element);
-    };
-  });
-}
-
 function isOnLinkedInProfilePage() {
   return location.href.startsWith("https://www.linkedin.com/talent/hire/") &&
          location.href.includes("/manage/all/profile/");
-}
-
-function delay(ms) {
-  return new Promise(resolve => setTimeout(resolve, ms));
 }
 
 async function extractProfileDataWithAttachments() {
   await waitForRequiredProfileElements();
 
   const { firstName, lastName } = extractNameFromNoteButton();
-
   await openAttachmentsTab();
 
   const email = document.querySelector("span[data-test-contact-email-address]")?.textContent.trim() || null;
@@ -82,17 +36,12 @@ async function waitForRequiredProfileElements() {
 
 function extractNameFromNoteButton() {
   const noteButton = document.querySelector("#note-list-title + button[title^='Ajouter une note sur']");
-  if (!noteButton) return { firstName: null, lastName: null };
-
-  const title = noteButton.getAttribute("title");
+  const title = noteButton?.getAttribute("title");
   const match = title?.match(/^Ajouter une note sur (.+)$/);
   if (!match) return { firstName: null, lastName: null };
 
-  const fullName = match[1].trim().split(" ");
-  return {
-    firstName: fullName[0],
-    lastName: fullName.slice(1).join(" ")
-  };
+  const [firstName, ...lastParts] = match[1].trim().split(" ");
+  return { firstName, lastName: lastParts.join(" ") };
 }
 
 async function openAttachmentsTab() {
@@ -125,12 +74,10 @@ function sendScrapedDataToBackground(scrapedData) {
 
 (async function scrapeLinkedInProfile() {
   if (!isOnLinkedInProfilePage()) return;
-
   console.log("[LinkedIn Recruiter] Scraper lancé");
 
   try {
     const scrapedData = await extractProfileDataWithAttachments();
-
     if (scrapedData.name && scrapedData.lastName) {
       sendScrapedDataToBackground(scrapedData);
     }
@@ -138,9 +85,35 @@ function sendScrapedDataToBackground(scrapedData) {
     console.error("[LinkedIn Recruiter] Échec du scraping :", error);
   }
 
-  // Pause finale pour s'assurer que tout est terminé
   await delay(1000);
   console.log("Bien arrivé");
-
-  return true;
 })();
+
+// Attends l'apparition d'un élément DOM donné
+function waitForElement(selector, timeout = 20000) {
+  return new Promise((resolve, reject) => {
+    const existing = document.querySelector(selector);
+    if (existing) return resolve(existing);
+
+    const observer = new MutationObserver(() => {
+      const el = document.querySelector(selector);
+      if (el) {
+        clearTimeout(timeoutId);
+        observer.disconnect();
+        resolve(el);
+      }
+    });
+
+    observer.observe(document.body, { childList: true, subtree: true });
+
+    const timeoutId = setTimeout(() => {
+      observer.disconnect();
+      reject(new Error(`Timeout: Élément ${selector} introuvable`));
+    }, timeout);
+  });
+}
+
+// Délai simple basé sur des millisecondes
+function delay(ms) {
+  return new Promise(resolve => setTimeout(resolve, ms));
+}
