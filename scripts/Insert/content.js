@@ -1,5 +1,6 @@
 /**
- * Returns a mapping of scraped data keys to form input names.
+ * Retourne la correspondance entre les clés des données extraites et les noms des champs du formulaire.
+ * @returns {Object} Mapping clé donnée → nom champ input
  */
 function getFormInputMapping() {
   return {
@@ -12,7 +13,10 @@ function getFormInputMapping() {
 }
 
 /**
- * Populates an individual input field if found.
+ * Remplit un champ input donné avec une valeur si le champ existe et que la valeur est définie.
+ * Envoie les événements "input" et "change" pour déclencher les réactions éventuelles liées au formulaire.
+ * @param {string} inputName - Nom du champ input à remplir
+ * @param {string} value - Valeur à insérer dans le champ
  */
 function populateInput(inputName, value) {
   const input = document.querySelector(`input[name="${inputName}"]`);
@@ -24,11 +28,14 @@ function populateInput(inputName, value) {
 }
 
 /**
- * Iterates over the mapping and fills in the form inputs.
+ * Parcourt toutes les paires clé → nom input du mapping et remplit chaque champ avec la donnée correspondante.
+ * En mode test, utilise des valeurs test à la place des données réelles (commenter/décommenter selon usage).
+ * @param {Object} scrapedData - Données extraites à insérer dans le formulaire
  */
 function fillFormFields(scrapedData) {
   const mapping = getFormInputMapping();
 
+  // Valeurs de test, à remplacer par les vraies données lors du déploiement
   const testValues = {
     lastName: "TestNom",
     name: "TestPrenom",
@@ -38,33 +45,39 @@ function fillFormFields(scrapedData) {
   };
 
   for (const [dataKey, inputName] of Object.entries(mapping)) {
+    // Remplacer testValues par scrapedData pour l'usage réel
     populateInput(inputName, testValues[dataKey]);
     // populateInput(inputName, scrapedData[dataKey]);
   }
 }
 
 /**
- * Finalizes the form interaction: triggers key event then submits.
+ * Finalise l'interaction avec le formulaire en déclenchant la soumission via oF.submit() si disponible.
+ * Enregistre dans sessionStorage un indicateur pour signaler la soumission.
  */
 async function finalizeFormSubmission() {
   if (window.oF && typeof window.oF.submit === "function") {
-    console.log("Submitting form via oF.submit()");
+    console.log("Soumission du formulaire via oF.submit()");
     window.oF.submit();
     sessionStorage.setItem("justSubmittedCandidateForm", "true");
   } else {
-    console.warn("oF.submit() not available.");
+    console.warn("oF.submit() non disponible.");
   }
 }
 
 /**
- * Returns a promise that resolves after `ms` milliseconds.
+ * Renvoie une promesse qui se résout après un délai donné en millisecondes.
+ * Utile pour temporiser des actions asynchrones.
+ * @param {number} ms - Durée du délai en millisecondes
+ * @returns {Promise}
  */
 function wait(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
 /**
- * Handles the main logic when data is received from the background script.
+ * Gère la soumission des données candidates reçues en remplissant le formulaire puis en le soumettant.
+ * @param {Object} payload - Données candidates extraites à insérer et soumettre
  */
 async function handleCandidateDataSubmission(payload) {
   fillFormFields(payload);
@@ -72,7 +85,9 @@ async function handleCandidateDataSubmission(payload) {
 }
 
 /**
- * Listen for messages from the extension.
+ * Configure l'écouteur d'événements "FROM_EXTENSION" pour recevoir les données candidates envoyées par l'extension.
+ * Si un CV en base64 est présent, il est stocké dans sessionStorage.
+ * Lance la soumission du formulaire avec les données reçues.
  */
 function setupExtensionListener() {
   window.addEventListener("FROM_EXTENSION", async (event) => {
@@ -82,18 +97,18 @@ function setupExtensionListener() {
       if (payload.cvBase64) {
         try {
           sessionStorage.setItem('linkedinCvBase64', payload.cvBase64);
-          console.log("PDF base64 stored in sessionStorage");
+          console.log("PDF base64 stocké dans sessionStorage");
         } catch (error) {
-          console.error("Error storing PDF base64:", error);
+          console.error("Erreur lors du stockage du PDF base64 :", error);
         }
       } else {
-        console.warn("No cvBase64 found in payload; PDF will not be stored.");
+        console.warn("Aucun cvBase64 trouvé dans le payload; le PDF ne sera pas stocké.");
       }
 
-      handleCandidateDataSubmission(payload); 
+      handleCandidateDataSubmission(payload);
     }
   });
 }
 
-// Initialize
+// Initialisation du listener à l'exécution du script
 setupExtensionListener();

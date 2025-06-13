@@ -41,6 +41,10 @@ loadHelper('Parameter', 'Parameter.js', true); // Instancie la classe Parameter 
 
 // ========== Chargement manuel de Parameter (exemple avec import test de CSV) ==========
 
+/**
+ * Charge manuellement le module Parameter, instancie la classe et importe des données CSV de test.
+ * Utile pour tester l'import/export de paramètres sans utiliser loadHelper.
+ */
 if (!window.parameterHandlerReady) {
   window.parameterHandlerReady = (async () => {
     try {
@@ -70,13 +74,12 @@ if (!window.parameterHandlerReady) {
   })();
 }
 
-// ========== Enregistrement de l'écouteur principal ==========
-
-// Évite l'enregistrement multiple du listener en cas d'injections répétées du script
+/**
+ * Enregistre un listener global pour les messages runtime.
+ * Écoute l'action "runScraper" et lance la fonction runScraper avec l'index de colonne stocké.
+ */
 if (!window.scraperListenerRegistered) {
   window.scraperListenerRegistered = true;
-
-  // Réception du message depuis popup.js pour lancer le scraping
   chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     if (message.action === "runScraper") {
       chrome.storage.sync.get("idIndex", ({ idIndex }) => {
@@ -85,65 +88,98 @@ if (!window.scraperListenerRegistered) {
           sendResponse({ status: 'error', message: 'Invalid index' });
           return;
         }
-
-        runScraper(idIndex); // Lancement du scraping avec l'index défini
+        runScraper(idIndex);
         sendResponse({ status: 'ok' });
       });
-
-      return true; // Permet une réponse asynchrone
+      return true; // Indique une réponse asynchrone
     }
   });
 }
 
-// ========== Fonction utilitaire : Détection dynamique de la colonne "Numéro de ligne" ==========
-
 /**
- * Détecte dynamiquement l'index de la colonne contenant un numéro de ligne (ex: 'N°').
- * Fallback à la colonne 0 si aucun intitulé connu n’est trouvé.
- * @param {HTMLTableElement} table
- * @returns {number} index de la colonne, ou 0 par défaut
+ * Détecte l'index de la colonne contenant le numéro de ligne dans un tableau.
+ * Recherche l'en-tête 'n°' (insensible à la casse).
+ * @param {HTMLTableElement} table - Le tableau HTML à analyser.
+ * @returns {number} - Index de la colonne numéro de ligne, 0 par défaut.
  */
 function detectRowNumberColIndex(table) {
   const headers = table.querySelectorAll('thead th');
   for (let i = 0; i < headers.length; i++) {
     const label = headers[i].textContent?.trim().toLowerCase();
-    if (label === 'n°') {
-      return i;
-    }
+    if (label === 'n°') return i;
   }
-  return 0; // Fallback si aucun intitulé détecté
+  return 0;
 }
 
-// ========== Fonction principale de scraping ==========
+// ========== Refactorisation de runScraper en fonctions plus petites ==========
 
 /**
- * Fonction principale qui extrait les données du tableau HTML et les exporte en CSV + TXT.
- * S'appuie sur les helpers pour gérer le scroll, la détection des lignes et les surbrillances visuelles.
- * @param {number} idIndex - Index de la colonne contenant l'ID à extraire.
+ * Prépare l'environnement de scraping en chargeant et validant les helpers requis.
+ * @returns {Promise<{parameterHandler: object, HighlightHelper: object, ScrollHelper: object}|null>}
  */
-async function runScraper(idIndex) {
+async function prepareScraper() {
   await window.parameterHandlerReady;
   const parameterHandler = window.parameterHandler;
   if (!parameterHandler) {
     console.error("parameterHandler non initialisé.");
-    return;
+    return null;
   }
-
-  // Chargement des modules utilitaires (Highlight + Scroll)
   await window.highlightHelperReady;
   const HighlightHelper = window.HighlightHelper;
   if (!HighlightHelper) {
-    console.error("HighlightHelper est undefined. Vérifier le chargement du module.");
-    return;
+    console.error("HighlightHelper est undefined.");
+    return null;
   }
-
   await window.scrollHelperReady;
   const ScrollHelper = window.ScrollHelper;
   if (!ScrollHelper) {
-    console.error("ScrollHelper est undefined. Vérifier le chargement du module.");
-    return;
+    console.error("ScrollHelper est undefined.");
+    return null;
   }
+  return { parameterHandler, HighlightHelper, ScrollHelper };
+}
 
+/**
+ * Récupère les éléments clés du tableau HTML et valide leur présence.
+ * @returns {{table: HTMLTableElement, thead: HTMLElement, tbody: HTMLElement}|null}
+ */
+function getTableElements() {
+  const table = document.getElementById('DataTables_Table_0');
+  if (!table) {
+    console.error('Tableau introuvable.');
+    return null;
+  }
+  const thead = table.querySelector('thead');
+  const tbody = table.querySelector('tbody');
+  if (!thead || !tbody) {
+    console.error("Structure du tableau invalide (thead ou tbody manquant).");
+    return null;
+  }
+  return { table, thead, tbody };
+}
+
+/**
+ * Construit un dictionnaire associant les noms des colonnes à leurs index.
+ * @param {HTMLElement} thead - Élément thead du tableau.
+ * @returns {Object} - Map { nomColonne: index }
+ */
+function buildHeaderMap(thead) {
+  const headerMap = {};
+  thead.querySelectorAll('th').forEach((th, index) => {
+    headerMap[th.innerText.trim()] = index;
+  });
+  return headerMap;
+}
+
+/**
+ * Prépare le système de surlignage des colonnes et des en-têtes spécifiques.
+ * Injecte les styles et applique les surlignages.
+ * @param {object} HighlightHelper - Helper pour la gestion du surlignage.
+ * @param {number} idIndex - Index de la colonne à surligner.
+ * @param {string[]} headersOfInterest - Liste des en-têtes à surligner.
+ * @returns {object} - Fonctions de nettoyage des surlignages.
+ */
+function prepareHighlighting(HighlightHelper, idIndex, headersOfInterest) {
   const {
     injectHighlightStyles,
     clearAllHighlights,
@@ -153,92 +189,123 @@ async function runScraper(idIndex) {
     fadeOutColumnHighlight
   } = HighlightHelper;
 
+  injectHighlightStyles();
+  applyColumnHighlight(idIndex);
+  highlightByHeaderLabel(headersOfInterest);
+
+  return {
+    clearAllHighlights,
+    fadeOutHighlightByHeaderLabel,
+    fadeOutColumnHighlight
+  };
+}
+
+/**
+ * Récupère le conteneur scrollable parent du tableau et les helpers de scroll.
+ * @param {object} ScrollHelper - Helper pour la gestion du scroll.
+ * @param {HTMLTableElement} table - Le tableau HTML.
+ * @returns {object} - Conteneur scrollable et fonctions de scroll.
+ */
+function getScrollContainerAndHelpers(ScrollHelper, table) {
   const {
     getScrollableParent,
     scrollToTop,
     scrollAndCollectRows
   } = ScrollHelper;
 
-  console.log("Running scraper with index:", idIndex);
-
-  const HEADER_RECHERCHE = 'Recherche / Demande de poste';
-  const data = []; // Résultats collectés
-
-  injectHighlightStyles(); // Ajoute les styles CSS pour la surbrillance
-
-  // Configuration de la structure des données à exporter
-  parameterHandler.nomColonnes = [HEADER_RECHERCHE, 'ID'];
-  parameterHandler.donnees = data;
-
-  // Récupération du tableau cible
-  const table = document.getElementById('DataTables_Table_0');
-  if (!table) {
-    console.error('Tableau introuvable.');
-    return;
-  }
-
-  const thead = table.querySelector('thead');
-  const tbody = table.querySelector('tbody');
-  if (!thead || !tbody) {
-    console.error("Structure du tableau invalide (thead ou tbody manquant).");
-    return;
-  }
-
-  // Création d'une map des en-têtes vers leurs index
-  const headerMap = {};
-  thead.querySelectorAll('th').forEach((th, index) => {
-    const headerName = th.innerText.trim();
-    headerMap[headerName] = index;
-  });
-
-  // Détection automatique de la colonne numéro de ligne
-  const rowNumberColIndex = detectRowNumberColIndex(table);
-
-  const headersOfInterest = [HEADER_RECHERCHE];
-
-  // Surbrillance visuelle des colonnes ciblées
-  applyColumnHighlight(idIndex);
-  highlightByHeaderLabel(headersOfInterest);
-
-  // Scroll vers le haut avant de démarrer le scraping
   const scrollContainer = getScrollableParent(table) || window;
-  scrollToTop(scrollContainer);
-  await new Promise(resolve => setTimeout(resolve, 50)); // Laisse le temps aux mutations
+  return { scrollContainer, scrollToTop, scrollAndCollectRows };
+}
 
-  const lines = [];
-  const seenRows = new WeakSet(); // Pour éviter les doublons DOM
-
-  /**
-   * Traite chaque ligne <tr> pour extraire les données nécessaires.
-   */
-  const processRowFn = (row, lines) => {
+/**
+ * Crée une fonction pour traiter chaque ligne du tableau et extraire les données importantes.
+ * @param {number} rowNumberColIndex - Index de la colonne numéro de ligne.
+ * @param {number} idIndex - Index de la colonne ID.
+ * @param {Object} headerMap - Map des noms de colonnes vers index.
+ * @param {string} HEADER_RECHERCHE - Nom de la colonne "Recherche / Demande de poste".
+ * @param {Array} data - Tableau où stocker les objets extraits.
+ * @param {Array} lines - Tableau où stocker les lignes texte exportées.
+ * @returns {Function} - Fonction qui traite une ligne HTML.
+ */
+function createProcessRowFn(rowNumberColIndex, idIndex, headerMap, HEADER_RECHERCHE, data, lines) {
+  return (row) => {
     const cells = row.querySelectorAll('td');
+    if (cells.length === 0) return;
     const rowNumberCell = cells[rowNumberColIndex];
     const rowNumber = rowNumberCell?.textContent?.trim() || (data.length + 1);
-
     const idCell = cells[idIndex];
     if (!idCell || !idCell.innerText.trim()) return;
-
     const id = idCell.innerText.trim();
     const recherche = cells[headerMap[HEADER_RECHERCHE]]?.innerText.trim() || '?';
 
     lines.push(`${rowNumber}. ${recherche} | ${id}`);
     data.push({ [HEADER_RECHERCHE]: recherche, ID: id });
   };
+}
 
-  // Scroll + collecte des lignes à l’aide d’un MutationObserver
-  await scrollAndCollectRows({
-    tbody,
-    scrollContainer,
-    processRowFn,
-    seenRows,
-    lines,
-  });
+/**
+ * Exporte les résultats du scraping en fichiers CSV et TXT téléchargeables.
+ * @param {object} parameterHandler - Handler pour l'export CSV.
+ * @param {Array<string>} lines - Lignes texte brutes à exporter en TXT.
+ */
+function exportResults(parameterHandler, lines) {
+  const csvText = parameterHandler.export();
+  const blob = new Blob([csvText], { type: 'text/csv' });
+  const link = document.createElement('a');
+  link.href = URL.createObjectURL(blob);
+  link.download = 'scraped_results.csv';
+  link.click();
 
-  // Pause finale après la dernière mutation
-  await new Promise(resolve => setTimeout(resolve, 30));
+  const txtBlob = new Blob([lines.join('\n')], { type: 'text/plain' });
+  const txtLink = document.createElement('a');
+  txtLink.href = URL.createObjectURL(txtBlob);
+  txtLink.download = 'raw_output_lines.txt';
+  txtLink.click();
+}
 
-  // Nettoyage des effets visuels
+/**
+ * Fonction principale de scraping : charge l'environnement, collecte et exporte les données du tableau.
+ * @param {number} idIndex - Index de la colonne ID à scraper.
+ */
+async function runScraper(idIndex) {
+  const prepared = await prepareScraper();
+  if (!prepared) return;
+  const { parameterHandler, HighlightHelper, ScrollHelper } = prepared;
+
+  const tableElements = getTableElements();
+  if (!tableElements) return;
+  const { table, thead, tbody } = tableElements;
+
+  const headerMap = buildHeaderMap(thead);
+  const rowNumberColIndex = detectRowNumberColIndex(table);
+  const HEADER_RECHERCHE = 'Recherche / Demande de poste';
+  const data = [];
+  const lines = [];
+
+  parameterHandler.nomColonnes = [HEADER_RECHERCHE, 'ID'];
+  parameterHandler.donnees = data;
+
+  const headersOfInterest = [HEADER_RECHERCHE];
+
+  const {
+    clearAllHighlights,
+    fadeOutHighlightByHeaderLabel,
+    fadeOutColumnHighlight
+  } = prepareHighlighting(HighlightHelper, idIndex, headersOfInterest);
+
+  const { scrollContainer, scrollToTop, scrollAndCollectRows } = getScrollContainerAndHelpers(ScrollHelper, table);
+
+  scrollToTop(scrollContainer);
+  await new Promise(r => setTimeout(r, 50));
+
+  const processRowFn = createProcessRowFn(rowNumberColIndex, idIndex, headerMap, HEADER_RECHERCHE, data, lines);
+
+  const seenRows = new WeakSet();
+
+  await scrollAndCollectRows({ tbody, scrollContainer, processRowFn, seenRows, lines });
+
+  await new Promise(r => setTimeout(r, 30));
+
   fadeOutHighlightByHeaderLabel(headersOfInterest);
   fadeOutColumnHighlight(idIndex);
   clearAllHighlights();
@@ -248,18 +315,5 @@ async function runScraper(idIndex) {
     return;
   }
 
-  // === Export CSV ===
-  const csvText = parameterHandler.export();
-  const blob = new Blob([csvText], { type: 'text/csv' });
-  const link = document.createElement('a');
-  link.href = URL.createObjectURL(blob);
-  link.download = 'scraped_results.csv';
-  link.click();
-
-  // === Export TXT brut ===
-  const txtBlob = new Blob([lines.join('\n')], { type: 'text/plain' });
-  const txtLink = document.createElement('a');
-  txtLink.href = URL.createObjectURL(txtBlob);
-  txtLink.download = 'raw_output_lines.txt';
-  txtLink.click();
+  exportResults(parameterHandler, lines);
 }

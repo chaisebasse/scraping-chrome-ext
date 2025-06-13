@@ -1,8 +1,17 @@
+/**
+ * Vérifie si la page actuelle est une page de profil LinkedIn Recruiter.
+ * @returns {boolean} - Vrai si l'URL correspond à une page profil LinkedIn Recruiter.
+ */
 function isOnLinkedInProfilePage() {
   return location.href.startsWith("https://www.linkedin.com/talent/hire/") &&
          location.href.includes("/manage/all/profile/");
 }
 
+/**
+ * Extrait les données du profil LinkedIn, y compris les pièces jointes.
+ * Attend que les éléments nécessaires soient présents avant extraction.
+ * @returns {Promise<Object>} - Objet contenant les données extraites (nom, email, téléphone, URL publique).
+ */
 async function extractProfileDataWithAttachments() {
   await waitForRequiredProfileElements();
 
@@ -25,6 +34,11 @@ async function extractProfileDataWithAttachments() {
   return scrapedData;
 }
 
+/**
+ * Attend que tous les éléments nécessaires au scraping soient chargés dans le DOM.
+ * Utilise waitForElement pour chaque sélecteur clé.
+ * @returns {Promise<void>}
+ */
 async function waitForRequiredProfileElements() {
   await Promise.all([
     waitForElement("span[data-test-contact-email-address]"),
@@ -34,6 +48,10 @@ async function waitForRequiredProfileElements() {
   ]);
 }
 
+/**
+ * Extrait le prénom et le nom à partir du titre du bouton "Ajouter une note sur ...".
+ * @returns {{firstName: string|null, lastName: string|null}} - Prénom et nom extraits.
+ */
 function extractNameFromNoteButton() {
   const noteButton = document.querySelector("#note-list-title + button[title^='Ajouter une note sur']");
   const title = noteButton?.getAttribute("title");
@@ -44,6 +62,11 @@ function extractNameFromNoteButton() {
   return { firstName, lastName: lastParts.join(" ") };
 }
 
+/**
+ * Ouvre l'onglet "Pièces jointes" dans l'interface LinkedIn Recruiter
+ * et attend que les pièces jointes soient chargées.
+ * @returns {Promise<void>}
+ */
 async function openAttachmentsTab() {
   await waitForElement('[data-test-navigation-list-item]');
   const attachmentsTab = await waitForElement('[data-live-test-profile-attachments-tab]');
@@ -54,6 +77,11 @@ async function openAttachmentsTab() {
   console.log("[LinkedIn Recruiter] Pièces jointes détectées");
 }
 
+/**
+ * Envoie les données extraites au background script de l'extension.
+ * Gère la réponse et log les succès ou erreurs.
+ * @param {Object} scrapedData - Données extraites à envoyer.
+ */
 function sendScrapedDataToBackground(scrapedData) {
   console.log("Envoi des données...");
 
@@ -72,6 +100,10 @@ function sendScrapedDataToBackground(scrapedData) {
   });
 }
 
+/**
+ * Fonction principale auto-exécutée qui lance le scraping si on est sur la bonne page.
+ * Elle gère les erreurs et attend une seconde avant de terminer.
+ */
 (async function scrapeLinkedInProfile() {
   if (!isOnLinkedInProfilePage()) return;
   console.log("[LinkedIn Recruiter] Scraper lancé");
@@ -85,11 +117,16 @@ function sendScrapedDataToBackground(scrapedData) {
     console.error("[LinkedIn Recruiter] Échec du scraping :", error);
   }
 
-  await delay(1000);
   console.log("Bien arrivé");
 })();
 
-// Attends l'apparition d'un élément DOM donné
+/**
+ * Attend l'apparition d'un élément dans le DOM correspondant au sélecteur donné.
+ * Utilise un MutationObserver et un timeout par défaut de 20 secondes.
+ * @param {string} selector - Sélecteur CSS de l'élément attendu.
+ * @param {number} [timeout=20000] - Durée maximale d'attente en ms.
+ * @returns {Promise<Element>} - Résout avec l'élément trouvé, rejette si timeout.
+ */
 function waitForElement(selector, timeout = 20000) {
   return new Promise((resolve, reject) => {
     const existing = document.querySelector(selector);
@@ -113,7 +150,11 @@ function waitForElement(selector, timeout = 20000) {
   });
 }
 
-// Délai simple basé sur des millisecondes
+/**
+ * Crée un délai asynchrone basé sur un timeout en millisecondes.
+ * @param {number} ms - Durée du délai en millisecondes.
+ * @returns {Promise<void>}
+ */
 function delay(ms) {
   return new Promise(resolve => setTimeout(resolve, ms));
 }
