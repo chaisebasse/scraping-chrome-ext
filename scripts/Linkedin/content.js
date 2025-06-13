@@ -21,88 +21,6 @@ function waitForElement(selector, timeout = 20000) {
   });
 }
 
-// Envoie une requête de téléchargement au script d'arrière-plan avec l'URL blob et le nom de fichier
-function sendDownloadRequest(blobUrl, filename) {
-  chrome.runtime.sendMessage({
-    action: "downloadPdf",
-    url: blobUrl,
-    filename,
-  }, (response) => {
-    if (chrome.runtime.lastError) {
-      console.error("[LinkedIn Recruiter] Erreur d'envoi de message de téléchargement :", chrome.runtime.lastError.message);
-    } else {
-      console.log("[LinkedIn Recruiter] Réponse du message de téléchargement :", response);
-    }
-  });
-}
-
-// Observe les mutations DOM pour détecter une URL blob générée après le clic sur le bouton de téléchargement
-function watchForBlobUrl(firstName, lastName, callback) {
-  const observer = new MutationObserver((mutations, obs) => {
-    for (const mutation of mutations) {
-      for (const node of mutation.addedNodes) {
-        if (node.nodeType !== 1) continue;
-
-        const blobCandidate = node.matches?.("a[download], iframe, object, embed") ? node : node.querySelector?.("a[download], iframe, object, embed");
-        const src = blobCandidate?.src || blobCandidate?.data || blobCandidate?.href;
-
-        if (src?.startsWith("blob:")) {
-          console.log("[LinkedIn Recruiter] Blob URL detected:", src);
-
-          // Fetch + convert to base64
-          fetch(src)
-            .then(response => response.blob())
-            .then(blob => {
-              const reader = new FileReader();
-              reader.onloadend = () => {
-                const base64Data = reader.result;
-                chrome.storage.local.set({ linkedinCv: base64Data }, () => {
-                  console.log("[LinkedIn Recruiter] CV saved in chrome.storage.local");
-
-                  if (typeof callback === "function") callback();
-                });
-              };
-              reader.readAsDataURL(blob);
-            })
-            .catch(err => {
-              console.error("[LinkedIn Recruiter] Failed to fetch blob:", err);
-            });
-
-          obs.disconnect();
-          return;
-        }
-      }
-    }
-  });
-
-  observer.observe(document.body, { childList: true, subtree: true });
-}
-
-// Simule un clic sur le bouton de téléchargement du CV
-function simulateResumeDownloadClick() {
-  const previewableAttachments = document.querySelectorAll('[data-test-previewable-attachment]');
-
-  for (const attachment of previewableAttachments) {
-    const rowTypeSpan = attachment.querySelector('[data-test-attachment-row-type]');
-    const rowTypeText = rowTypeSpan?.textContent?.trim();
-
-    if (rowTypeText === "(CV)") {
-      const downloadBtn = attachment.querySelector('button[data-test-attachment-download-btn]');
-
-      if (downloadBtn) {
-        downloadBtn.click();
-        console.log('[LinkedIn Recruiter] Clic simulé sur le bouton de téléchargement du CV "(CV)"');
-      } else {
-        console.warn('[LinkedIn Recruiter] Bouton de téléchargement introuvable dans la pièce jointe "(CV)"');
-      }
-
-      return; // On s'arrête après le premier CV trouvé
-    }
-  }
-
-  console.warn('[LinkedIn Recruiter] Aucun CV "(CV)" trouvé dans les pièces jointes');
-}
-
 // Logique principale du scraping
 (async () => {
   const isProfilePage = location.href.startsWith("https://www.linkedin.com/talent/hire/") &&
@@ -143,9 +61,6 @@ function simulateResumeDownloadClick() {
     // Étape 2 : Attendre que les pièces jointes apparaissent
     await waitForElement("[data-test-previewable-attachment]");
     console.log("[LinkedIn Recruiter] Pièces jointes détectées");
-
-    // Étape 3 : Simuler le téléchargement du CV
-    // simulateResumeDownloadClick();
 
     // Récupération des données de profil
     const emailSpan = document.querySelector("span[data-test-contact-email-address]");

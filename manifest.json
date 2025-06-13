@@ -39,7 +39,10 @@
       "world": "MAIN"
     },
     {
-      "matches": ["http://s-tom-1:90/MeilleurPilotage/servlet/Gestion*"],
+      "matches": [
+        "http://s-tom-1:90/MeilleurPilotage/servlet/Gestion*",
+        "http://s-tom-1:90/MeilleurPilotage/servlet/UG*"
+      ],
       "js": ["scripts/Insert/postSubmitRedirect.js"],
       "run_at": "document_idle"
     }

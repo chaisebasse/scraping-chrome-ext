@@ -1,46 +1,3 @@
-// Wait until linkedinCv is available in storage
-function waitForLinkedinCv(timeout = 15000) {
-  return new Promise((resolve, reject) => {
-    const deadline = Date.now() + timeout;
-
-    function check() {
-      chrome.storage.local.get("linkedinCv", (data) => {
-        if (data.linkedinCv) {
-          const binary = new Uint8Array(data.linkedinCv.data);
-          const blob = new Blob([binary], { type: "application/pdf" });
-          resolve(blob);
-        } else if (Date.now() < deadline) {
-          setTimeout(check, 300);
-        } else {
-          reject(new Error("Timeout waiting for linkedinCv in storage"));
-        }
-      });
-    }
-
-    check();
-  });
-}
-
-// Helper to upload the PDF to MP
-async function uploadPdfToMP(pdfBlob, fk) {
-  const formData = new FormData();
-  formData.append("del", "false");
-  formData.append("type", "MT__RECR_CANDIDAT_CV");
-  formData.append("fk", fk);
-  formData.append("pk", "");
-  formData.append("fichier", new File([pdfBlob], "cv.pdf", { type: "application/pdf" }));
-
-  const response = await fetch("http://s-tom-1:90/MeilleurPilotage/servlet/UG", {
-    method: "POST",
-    body: formData,
-    credentials: "include"
-  });
-
-  const html = await response.text();
-  const match = html.match(/<input[^>]+name="pk"[^>]+value="(\d+)"/);
-  return match?.[1] || null;
-}
-
 /**
  * Simulates a key press (default: ArrowDown) on the last name input to trigger autocomplete.
  */
@@ -95,8 +52,6 @@ function fillFormFields(scrapedData) {
     populateInput(inputName, testValues[dataKey]);
     // populateInput(inputName, scrapedData[dataKey]);
   }
-
-  console.log("Form fields populated.");
 }
 
 /**
@@ -104,30 +59,16 @@ function fillFormFields(scrapedData) {
  */
 async function finalizeFormSubmission() {
   pressKeyOnLastNameInput();
-  await wait(1000); // Wait for any autocomplete/ajax logic to settle
+  await wait(10000); // Wait for any autocomplete/ajax logic to settle
 
   if (window.oF && typeof window.oF.submit === "function") {
     console.log("Submitting form via oF.submit()");
+    await wait(10000);
     window.oF.submit();
-
-    const internalNumber = extractInternalNumber();
-
     sessionStorage.setItem("justSubmittedCandidateForm", "true");
   } else {
     console.warn("oF.submit() not available.");
   }
-}
-
-function extractInternalNumber() {
-  const container = document.querySelector("#FORM_PRIN");
-  if (!container) return null;
-
-  const firstDiv = container.querySelector("div");
-  if (!firstDiv) return null;
-
-  const text = firstDiv.textContent || "";
-  const match = text.match(/Numéro interne:\s*(\d+)/i);
-  return match ? match[1] : null;
 }
 
 /**
@@ -149,10 +90,23 @@ async function handleCandidateDataSubmission(payload) {
  * Listen for messages from the extension.
  */
 function setupExtensionListener() {
-  window.addEventListener("FROM_EXTENSION", (event) => {
+  window.addEventListener("FROM_EXTENSION", async (event) => {
     const { action, payload } = event.detail || {};
+
     if (action === "submit_candidate_data") {
-      handleCandidateDataSubmission(payload);
+      if (payload.cvUrl) {
+        console.log("cvUrl : ", payload.cvUrl);
+        try {
+          sessionStorage.setItem('linkedinCv', payload.cvUrl);
+          console.log("PDF URL stored in sessionStorage");
+        } catch (error) {
+          console.error("Error storing PDF URL:", error);
+        }
+      } else {
+        console.warn("No cvUrl found in payload; PDF will not be stored.");
+      }
+
+      handleCandidateDataSubmission(payload); 
     }
   });
 }

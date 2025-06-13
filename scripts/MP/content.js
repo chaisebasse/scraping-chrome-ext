@@ -263,13 +263,3 @@ async function runScraper(idIndex) {
   txtLink.download = 'raw_output_lines.txt';
   txtLink.click();
 }
-
-
-
-
-/*
-AMELIORATIONS :
-
-- Afficher une notification (ou Toast) plutôt qu’un alert pour une meilleure UX.
-
-*/
