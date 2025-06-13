@@ -29,9 +29,8 @@
 
   try {
 		console.log("waiting...");
-    const cvUrl = await getLinkedinCv();
-    const pdf = fetchPdfAsUint8Array(cvUrl);
-    const pk = await uploadPdfToMP(pdf, fk);
+    const cvBlob = await getLinkedinCv();
+    const pk = await uploadPdfToMP(cvBlob, fk);
     console.log("PDF uploaded, got pk:", pk);
   } catch (err) {
     console.error("Error uploading PDF:", err);
@@ -44,39 +43,38 @@ function getFkFromUrl() {
   return urlParams.get("fk");
 }
 
+function base64ToBlob(base64, contentType = 'application/pdf') {
+  const byteCharacters = atob(base64);
+  const byteNumbers = new Array(byteCharacters.length);
+  for (let i = 0; i < byteCharacters.length; i++) {
+    byteNumbers[i] = byteCharacters.charCodeAt(i);
+  }
+  const byteArray = new Uint8Array(byteNumbers);
+  return new Blob([byteArray], { type: contentType });
+}
+
 function getLinkedinCv(timeout = 15000) {
   return new Promise((resolve, reject) => {
     const deadline = Date.now() + timeout;
 
     function check() {
-      const url = sessionStorage.getItem("linkedinCv");
-      if (url) {
-        resolve(url);
+      const base64 = sessionStorage.getItem("linkedinCvBase64"); // note key changed to 'linkedinCvBase64'
+      if (base64) {
+        try {
+          const blob = base64ToBlob(base64);
+          resolve(blob);
+        } catch (err) {
+          reject(err);
+        }
       } else if (Date.now() < deadline) {
         setTimeout(check, 300);
       } else {
-        reject(new Error("Timeout waiting for linkedinCv in storage"));
+        reject(new Error("Timeout waiting for linkedinCvBase64 in storage"));
       }
     }
 
     check();
   });
-}
-
-async function fetchPdfAsUint8Array(pdfUrl) {
-  const response = await fetch(pdfUrl, {
-    credentials: 'include' // optional, only if the URL requires authentication cookies
-  });
-
-  console.log("response : ", response);
-
-  if (!response.ok) {
-    throw new Error(`Failed to fetch PDF: ${response.status} ${response.statusText}`);
-  }
-
-  const arrayBuffer = await response.arrayBuffer();
-  console.log("arrayBuffer : ", arrayBuffer);
-  return new Uint8Array(arrayBuffer);
 }
 
 async function uploadPdfToMP(pdfBlob, fk) {

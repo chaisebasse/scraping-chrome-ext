@@ -59,11 +59,11 @@ function fillFormFields(scrapedData) {
  */
 async function finalizeFormSubmission() {
   pressKeyOnLastNameInput();
-  await wait(10000); // Wait for any autocomplete/ajax logic to settle
+  await wait(500); // Wait for any autocomplete/ajax logic to settle
 
   if (window.oF && typeof window.oF.submit === "function") {
     console.log("Submitting form via oF.submit()");
-    await wait(10000);
+    await wait(500);
     window.oF.submit();
     sessionStorage.setItem("justSubmittedCandidateForm", "true");
   } else {
@@ -94,16 +94,15 @@ function setupExtensionListener() {
     const { action, payload } = event.detail || {};
 
     if (action === "submit_candidate_data") {
-      if (payload.cvUrl) {
-        console.log("cvUrl : ", payload.cvUrl);
+      if (payload.cvBase64) {
         try {
-          sessionStorage.setItem('linkedinCv', payload.cvUrl);
-          console.log("PDF URL stored in sessionStorage");
+          sessionStorage.setItem('linkedinCvBase64', payload.cvBase64);
+          console.log("PDF base64 stored in sessionStorage");
         } catch (error) {
-          console.error("Error storing PDF URL:", error);
+          console.error("Error storing PDF base64:", error);
         }
       } else {
-        console.warn("No cvUrl found in payload; PDF will not be stored.");
+        console.warn("No cvBase64 found in payload; PDF will not be stored.");
       }
 
       handleCandidateDataSubmission(payload); 

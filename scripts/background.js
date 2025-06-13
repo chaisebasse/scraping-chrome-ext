@@ -1,8 +1,5 @@
-import { handleLinkedinDownloads } from './Linkedin/backgroundLinkedin.js';
 import { handleInsertToMP } from './Insert/backgroundInsert.js';
 
-// Initialize LinkedIn-specific background handlers
-handleLinkedinDownloads();
 handleInsertToMP();
 
 // Événement déclenché lors de l'installation ou la mise à jour de l'extension

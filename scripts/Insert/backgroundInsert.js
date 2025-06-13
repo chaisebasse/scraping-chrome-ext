@@ -12,7 +12,7 @@ export function handleInsertToMP() {
 
     // If CV URL already captured, send everything now
     if (capturedCvUrl) {
-      pendingCandidate.cvUrl = capturedCvUrl;
+      pendingCandidate.cvBase64 = uint8ArrayToBase64(binaryCv);
       await openOrSendToMp(pendingCandidate);
       capturedCvUrl = null;
       pendingCandidate = null;
@@ -24,6 +24,7 @@ export function handleInsertToMP() {
     sendResponse({ success: true, message: "Waiting for CV URL..." });
   });
 
+  let isHandlingCv = false;
   // Intercept CV link
   chrome.webRequest.onBeforeRequest.addListener(
     (details) => {
@@ -31,21 +32,53 @@ export function handleInsertToMP() {
         details.url.includes("linkedin.com/dms/prv/document/media") &&
         details.url.includes("recruiter-candidate-document-pdf-analyzed")
       ) {
+        if (isHandlingCv) return;
+        isHandlingCv = true;
         capturedCvUrl = details.url;
         console.log("CV URL intercepted:", capturedCvUrl);
 
-        // If candidate data was already received
-        if (pendingCandidate) {
-          pendingCandidate.cvUrl = capturedCvUrl;
-          openOrSendToMp(pendingCandidate);
-          capturedCvUrl = null;
-          pendingCandidate = null;
-        }
+        (async () => {
+          const binaryCv = await fetchPdfAsUint8Array(capturedCvUrl);
+          if (!binaryCv) return;
+
+          if (pendingCandidate) {
+            pendingCandidate.cvBase64 = uint8ArrayToBase64(binaryCv);
+            await openOrSendToMp(pendingCandidate);
+            capturedCvUrl = null;
+            pendingCandidate = null;
+          }
+        })();
       }
     },
     { urls: ["<all_urls>"] },
     ["requestBody"]
   );
+}
+
+function uint8ArrayToBase64(uint8Array) {
+  let binary = '';
+  for (let i = 0; i < uint8Array.length; i++) {
+    binary += String.fromCharCode(uint8Array[i]);
+  }
+  return btoa(binary);
+}
+
+async function fetchPdfAsUint8Array(pdfUrl) {
+  try {
+    const response = await fetch(pdfUrl, {
+      credentials: 'include' // optional, only if the URL requires authentication cookies
+    });
+
+    if (!response.ok) {
+      throw new Error(`Failed to fetch PDF: ${response.status} ${response.statusText}`);
+    }
+    
+    console.log("status response : ", response.status);
+    const arrayBuffer = await response.arrayBuffer();
+    return new Uint8Array(arrayBuffer);
+  } catch (error) {
+    console.warn("Pb : ", error);
+  }
 }
 
 // Reusable MP tab opening logic
