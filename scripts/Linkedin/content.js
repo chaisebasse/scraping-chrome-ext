@@ -1,10 +1,6 @@
-function querySelectorIfExists(selector) {
-  return document.querySelector(selector);
-}
-
 function createObserver(selector, resolve) {
   const observer = new MutationObserver(() => {
-    const element = querySelectorIfExists(selector);
+    const element = document.querySelector(selector);
     if (element) {
       observer.disconnect();
       resolve(element);
@@ -24,11 +20,22 @@ function createTimeout(selector, timeout, observer, reject) {
 
 function waitForElement(selector, timeout = 20000) {
   return new Promise((resolve, reject) => {
-    const existingElement = querySelectorIfExists(selector);
+    const existingElement = document.querySelector(selector);
     if (existingElement) return resolve(existingElement);
 
     const observer = createObserver(selector, resolve);
-    createTimeout(selector, timeout, observer, reject);
+
+    const timeoutId = setTimeout(() => {
+      observer.disconnect();
+      reject(new Error(`Timeout: Élément ${selector} introuvable`));
+    }, timeout);
+
+    const originalResolve = resolve;
+    resolve = (element) => {
+      clearTimeout(timeoutId);
+      observer.disconnect();
+      originalResolve(element);
+    };
   });
 }
 
@@ -132,7 +139,7 @@ function sendScrapedDataToBackground(scrapedData) {
   }
 
   // Pause finale pour s'assurer que tout est terminé
-  await delay(7000);
+  await delay(1000);
   console.log("Bien arrivé");
 
   return true;

@@ -1,15 +1,4 @@
 /**
- * Simulates a key press (default: ArrowDown) on the last name input to trigger autocomplete.
- */
-function pressKeyOnLastNameInput(key = "ArrowDown") {
-  const input = document.querySelector('input[name="MP\\:NOM"]');
-  if (!input) return;
-  input.focus();
-  input.dispatchEvent(new KeyboardEvent("keydown", { key, bubbles: true }));
-  input.dispatchEvent(new KeyboardEvent("keyup", { key, bubbles: true }));
-}
-
-/**
  * Returns a mapping of scraped data keys to form input names.
  */
 function getFormInputMapping() {
@@ -58,12 +47,8 @@ function fillFormFields(scrapedData) {
  * Finalizes the form interaction: triggers key event then submits.
  */
 async function finalizeFormSubmission() {
-  pressKeyOnLastNameInput();
-  await wait(500); // Wait for any autocomplete/ajax logic to settle
-
   if (window.oF && typeof window.oF.submit === "function") {
     console.log("Submitting form via oF.submit()");
-    await wait(500);
     window.oF.submit();
     sessionStorage.setItem("justSubmittedCandidateForm", "true");
   } else {

@@ -4,7 +4,7 @@ export function handleInsertToMP() {
 
   chrome.runtime.onMessage.addListener(async (message, sender, sendResponse) => {
     if (message.action !== "send_candidate_data") {
-      sendResponse({ success: false, message: `action inconnue ${message.action}` });
+      sendResponse({ status: "error", message: `action inconnue ${message.action}` });
       return;
     }
 
@@ -12,16 +12,25 @@ export function handleInsertToMP() {
 
     // If CV URL already captured, send everything now
     if (capturedCvUrl) {
-      pendingCandidate.cvBase64 = uint8ArrayToBase64(binaryCv);
-      await openOrSendToMp(pendingCandidate);
+      const binaryCv = await fetchPdfAsUint8Array(capturedCvUrl);
+      if (!binaryCv) return;
+
+      if (pendingCandidate && binaryCv) {
+        const base64 = uint8ArrayToBase64(binaryCv);
+        if (base64) {
+          pendingCandidate.cvBase64 = base64;
+          await openOrSendToMp(pendingCandidate);
+        }
+      }
+      
       capturedCvUrl = null;
       pendingCandidate = null;
-      sendResponse({ success: true });
+      sendResponse({ status: "success" });
       return;
     }
 
     // Else: wait for CV capture, so response is deferred
-    sendResponse({ success: true, message: "Waiting for CV URL..." });
+    sendResponse({ status: "success", message: "Waiting for CV URL..."  });
   });
 
   let isHandlingCv = false;
@@ -41,9 +50,13 @@ export function handleInsertToMP() {
           const binaryCv = await fetchPdfAsUint8Array(capturedCvUrl);
           if (!binaryCv) return;
 
-          if (pendingCandidate) {
-            pendingCandidate.cvBase64 = uint8ArrayToBase64(binaryCv);
-            await openOrSendToMp(pendingCandidate);
+          if (pendingCandidate && binaryCv) {
+            const base64 = uint8ArrayToBase64(binaryCv);
+            if (base64) {
+              pendingCandidate.cvBase64 = base64;
+              await openOrSendToMp(pendingCandidate);
+            }
+
             capturedCvUrl = null;
             pendingCandidate = null;
           }
@@ -53,14 +66,6 @@ export function handleInsertToMP() {
     { urls: ["<all_urls>"] },
     ["requestBody"]
   );
-}
-
-function uint8ArrayToBase64(uint8Array) {
-  let binary = '';
-  for (let i = 0; i < uint8Array.length; i++) {
-    binary += String.fromCharCode(uint8Array[i]);
-  }
-  return btoa(binary);
 }
 
 async function fetchPdfAsUint8Array(pdfUrl) {
@@ -97,6 +102,7 @@ async function openOrSendToMp(scrapedData) {
   }
 }
 
+// tout bon a partir d'ici, le reste **peut** etre refacto
 function findExistingTab(url) {
   return new Promise((resolve) => {
     chrome.tabs.query({}, (tabs) => {
@@ -130,4 +136,12 @@ function sendToPage(tabId, action, payload) {
     },
     args: [action, payload]
   });
+}
+
+function uint8ArrayToBase64(uint8Array) {
+  let binary = '';
+  for (let i = 0; i < uint8Array.length; i++) {
+    binary += String.fromCharCode(uint8Array[i]);
+  }
+  return btoa(binary);
 }

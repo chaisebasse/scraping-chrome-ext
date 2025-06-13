@@ -1,7 +1,6 @@
-// === Phase 1: On form confirmation page (redirect to upload page) ===
+// === Phase 1: Extract internal number and upload CV ===
 (function () {
   const cameFromFormSubmission = sessionStorage.getItem("justSubmittedCandidateForm");
-
   if (!cameFromFormSubmission) return;
 
   sessionStorage.removeItem("justSubmittedCandidateForm");
@@ -13,36 +12,26 @@
   const internalNumber = match?.[1];
 
   if (internalNumber) {
-    const targetUrl = `http://s-tom-1:90/MeilleurPilotage/servlet/UG?type=MT__RECR_CANDIDAT_CV&fk=${internalNumber}`;
-    console.log("Redirecting to:", targetUrl);
-    window.location.href = targetUrl;
+    console.log("Internal number extracted:", internalNumber);
+    uploadCandidateCv(internalNumber);
   } else {
     console.warn("Failed to extract internal number.");
   }
 })();
 
-// === Phase 2: On redirected upload page ===
-(async function () {
-	console.log("session sotrage", sessionStorage);
-  const fk = getFkFromUrl();
-  if (!fk) return; // not on the upload page yet
-
+// === Main Upload Logic ===
+async function uploadCandidateCv(fk) {
   try {
-		console.log("waiting...");
+    console.log("Waiting for CV in session storage...");
     const cvBlob = await getLinkedinCv();
     const pk = await uploadPdfToMP(cvBlob, fk);
     console.log("PDF uploaded, got pk:", pk);
   } catch (err) {
     console.error("Error uploading PDF:", err);
   }
-})();
-
-// === Helpers ===
-function getFkFromUrl() {
-  const urlParams = new URLSearchParams(window.location.search);
-  return urlParams.get("fk");
 }
 
+// === Helpers ===
 function base64ToBlob(base64, contentType = 'application/pdf') {
   const byteCharacters = atob(base64);
   const byteNumbers = new Array(byteCharacters.length);
@@ -58,7 +47,7 @@ function getLinkedinCv(timeout = 15000) {
     const deadline = Date.now() + timeout;
 
     function check() {
-      const base64 = sessionStorage.getItem("linkedinCvBase64"); // note key changed to 'linkedinCvBase64'
+      const base64 = sessionStorage.getItem("linkedinCvBase64");
       if (base64) {
         try {
           const blob = base64ToBlob(base64);
