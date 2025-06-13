@@ -1,84 +1,80 @@
+let pendingCandidate = null;
+let capturedCvUrl = null;
+let isHandlingCv = false;
+
 export function handleInsertToMP() {
-  let pendingCandidate = null;
-  let capturedCvUrl = null;
+  chrome.runtime.onMessage.addListener(handleCandidateMessage);
+  chrome.webRequest.onBeforeRequest.addListener(handleWebRequest, { urls: ["<all_urls>"] }, ["requestBody"]);
+}
 
-  chrome.runtime.onMessage.addListener(async (message, sender, sendResponse) => {
-    if (message.action !== "send_candidate_data") {
-      sendResponse({ status: "error", message: `action inconnue ${message.action}` });
-      return;
-    }
+async function handleCandidateMessage(message, sender, sendResponse) {
+  if (message.action !== "send_candidate_data") {
+    sendResponse({ status: "error", message: `action inconnue ${message.action}` });
+    return;
+  }
 
-    pendingCandidate = message.scrapedData;
+  pendingCandidate = message.scrapedData;
 
-    // If CV URL already captured, send everything now
-    if (capturedCvUrl) {
-      const binaryCv = await fetchPdfAsUint8Array(capturedCvUrl);
-      if (!binaryCv) return;
+  if (capturedCvUrl) {
+    await handleCvAndSendToMP();
+    sendResponse({ status: "success" });
+    return;
+  }
 
-      if (pendingCandidate && binaryCv) {
-        const base64 = uint8ArrayToBase64(binaryCv);
-        if (base64) {
-          pendingCandidate.cvBase64 = base64;
-          await openOrSendToMp(pendingCandidate);
-        }
-      }
-      
-      capturedCvUrl = null;
-      pendingCandidate = null;
-      sendResponse({ status: "success" });
-      return;
-    }
+  sendResponse({ status: "success", message: "Waiting for CV URL..." });
+}
 
-    // Else: wait for CV capture, so response is deferred
-    sendResponse({ status: "success", message: "Waiting for CV URL..."  });
-  });
+function handleWebRequest(details) {
+  if (!shouldCapture(details.url)) return;
 
-  let isHandlingCv = false;
-  // Intercept CV link
-  chrome.webRequest.onBeforeRequest.addListener(
-    (details) => {
-      if (
-        details.url.includes("linkedin.com/dms/prv/document/media") &&
-        details.url.includes("recruiter-candidate-document-pdf-analyzed")
-      ) {
-        if (isHandlingCv) return;
-        isHandlingCv = true;
-        capturedCvUrl = details.url;
-        console.log("CV URL intercepted:", capturedCvUrl);
+  isHandlingCv = true;
+  capturedCvUrl = details.url;
+  console.log("CV URL intercepted:", capturedCvUrl);
+  processCvIfCandidatePending();
+}
 
-        (async () => {
-          const binaryCv = await fetchPdfAsUint8Array(capturedCvUrl);
-          if (!binaryCv) return;
-
-          if (pendingCandidate && binaryCv) {
-            const base64 = uint8ArrayToBase64(binaryCv);
-            if (base64) {
-              pendingCandidate.cvBase64 = base64;
-              await openOrSendToMp(pendingCandidate);
-            }
-
-            capturedCvUrl = null;
-            pendingCandidate = null;
-          }
-        })();
-      }
-    },
-    { urls: ["<all_urls>"] },
-    ["requestBody"]
+function shouldCapture(url) {
+  return (
+    url.includes("linkedin.com/dms/prv/document/media") &&
+    url.includes("recruiter-candidate-document-pdf-analyzed") &&
+    !isHandlingCv
   );
+}
+
+async function processCvIfCandidatePending() {
+  if (!pendingCandidate) return;
+  await handleCvAndSendToMP();
+}
+
+async function handleCvAndSendToMP() {
+  const binaryCv = await fetchPdfAsUint8Array(capturedCvUrl);
+  if (!binaryCv || !pendingCandidate) return;
+
+  const base64 = uint8ArrayToBase64(binaryCv);
+  if (!base64) return;
+
+  pendingCandidate.cvBase64 = base64;
+  await openOrSendToMp(pendingCandidate);
+
+  resetState();
+}
+
+function resetState() {
+  capturedCvUrl = null;
+  pendingCandidate = null;
+  isHandlingCv = false;
 }
 
 async function fetchPdfAsUint8Array(pdfUrl) {
   try {
     const response = await fetch(pdfUrl, {
-      credentials: 'include' // optional, only if the URL requires authentication cookies
+      credentials: 'include'
     });
 
     if (!response.ok) {
       throw new Error(`Failed to fetch PDF: ${response.status} ${response.statusText}`);
     }
-    
-    console.log("status response : ", response.status);
+
     const arrayBuffer = await response.arrayBuffer();
     return new Uint8Array(arrayBuffer);
   } catch (error) {
@@ -86,7 +82,6 @@ async function fetchPdfAsUint8Array(pdfUrl) {
   }
 }
 
-// Reusable MP tab opening logic
 async function openOrSendToMp(scrapedData) {
   const mpFormUrl = "http://s-tom-1:90/MeilleurPilotage/servlet/Gestion?CONVERSATION=RECR_GestionCandidat&ACTION=CREE&MAJ=N";
 
@@ -102,7 +97,8 @@ async function openOrSendToMp(scrapedData) {
   }
 }
 
-// tout bon a partir d'ici, le reste **peut** etre refacto
+// --- Utility functions (no refactor needed) ---
+
 function findExistingTab(url) {
   return new Promise((resolve) => {
     chrome.tabs.query({}, (tabs) => {
