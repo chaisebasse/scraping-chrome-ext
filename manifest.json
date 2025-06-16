@@ -25,13 +25,6 @@
   "content_scripts": [
     {
       "matches": [
-        "https://www.linkedin.com/talent/hire/*/manage/all/profile/*"
-      ],
-      "js": ["scripts/Linkedin/content.js"],
-      "run_at": "document_idle"
-    },
-    {
-      "matches": [
         "http://s-tom-1:90/MeilleurPilotage/*"
       ],
       "js": ["scripts/Insert/content.js"],

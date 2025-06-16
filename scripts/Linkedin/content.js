@@ -1,11 +1,22 @@
-/**
- * Vérifie si la page actuelle est une page de profil LinkedIn Recruiter.
- * @returns {boolean} - Vrai si l'URL correspond à une page profil LinkedIn Recruiter.
- */
-function isOnLinkedInProfilePage() {
-  return location.href.startsWith("https://www.linkedin.com/talent/hire/") &&
-         location.href.includes("/manage/all/profile/");
+if (!window.scraperListenerRegistered) {
+  window.scraperListenerRegistered = true;
+  chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
+    if (message.action === "runLinkedinScraper") {
+      scrapeLinkedInProfile();
+      sendResponse({ status: 'ok' });
+      return true; // Indique une réponse asynchrone
+    }
+  });
 }
+
+// /**
+//  * Vérifie si la page actuelle est une page de profil LinkedIn Recruiter.
+//  * @returns {boolean} - Vrai si l'URL correspond à une page profil LinkedIn Recruiter.
+//  */
+// function isOnLinkedInProfilePage() {
+//   return location.href.startsWith("https://www.linkedin.com/talent/hire/") &&
+//          location.href.includes("/manage/all/profile/");
+// }
 
 /**
  * Extrait les données du profil LinkedIn, y compris les pièces jointes.
@@ -71,8 +82,6 @@ async function openAttachmentsTab() {
   await waitForElement('[data-test-navigation-list-item]');
   const attachmentsTab = await waitForElement('[data-live-test-profile-attachments-tab]');
   attachmentsTab.click();
-  console.log("[LinkedIn Recruiter] Onglet 'Pièces jointes' cliqué");
-
   await waitForElement("[data-test-previewable-attachment]");
   console.log("[LinkedIn Recruiter] Pièces jointes détectées");
 }
@@ -83,8 +92,6 @@ async function openAttachmentsTab() {
  * @param {Object} scrapedData - Données extraites à envoyer.
  */
 function sendScrapedDataToBackground(scrapedData) {
-  console.log("Envoi des données...");
-
   chrome.runtime.sendMessage({
     action: "send_candidate_data",
     scrapedData,
@@ -105,9 +112,7 @@ function sendScrapedDataToBackground(scrapedData) {
  * Elle gère les erreurs et attend une seconde avant de terminer.
  */
 (async function scrapeLinkedInProfile() {
-  if (!isOnLinkedInProfilePage()) return;
-  console.log("[LinkedIn Recruiter] Scraper lancé");
-
+  // if (!isOnLinkedInProfilePage()) return;
   try {
     const scrapedData = await extractProfileDataWithAttachments();
     if (scrapedData.name && scrapedData.lastName) {
@@ -116,8 +121,6 @@ function sendScrapedDataToBackground(scrapedData) {
   } catch (error) {
     console.error("[LinkedIn Recruiter] Échec du scraping :", error);
   }
-
-  console.log("Bien arrivé");
 })();
 
 /**
