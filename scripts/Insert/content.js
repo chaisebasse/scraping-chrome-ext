@@ -13,17 +13,22 @@ function getFormInputMapping() {
 }
 
 /**
- * Remplit un champ input donné avec une valeur si le champ existe et que la valeur est définie.
+ * Remplit un champ de formulaire (input ou textarea) avec une valeur si le champ existe et que la valeur est définie.
  * Envoie les événements "input" et "change" pour déclencher les réactions éventuelles liées au formulaire.
- * @param {string} inputName - Nom du champ input à remplir
- * @param {string} value - Valeur à insérer dans le champ
+ * @param {string} fieldName - Nom du champ (name=...)
+ * @param {string} value - Valeur à insérer
  */
 function populateInput(inputName, value) {
+  if (!value) return;
+
   const input = document.querySelector(`input[name="${inputName}"]`);
-  if (input && value) {
+
+  if (input) {
     input.value = value;
     input.dispatchEvent(new Event("input", { bubbles: true }));
     input.dispatchEvent(new Event("change", { bubbles: true }));
+  } else {
+    console.warn(`No input or textarea found with name="${inputName}"`);
   }
 }
 
@@ -49,6 +54,11 @@ function fillFormFields(scrapedData) {
     populateInput(inputName, testValues[dataKey]);
     // populateInput(inputName, scrapedData[dataKey]);
   }
+  debugger;
+
+  setTimeout(() => {
+    console.log("Continuing after delay...");
+  }, 10000);  // 10 seconds pause
 }
 
 /**
@@ -101,8 +111,6 @@ function setupExtensionListener() {
         } catch (error) {
           console.error("Erreur lors du stockage du PDF base64 :", error);
         }
-      } else {
-        console.warn("Aucun cvBase64 trouvé dans le payload; le PDF ne sera pas stocké.");
       }
 
       handleCandidateDataSubmission(payload);

@@ -2,21 +2,23 @@ if (!window.scraperListenerRegistered) {
   window.scraperListenerRegistered = true;
   chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     if (message.action === "runLinkedinScraper") {
-      scrapeLinkedInProfile();
+      document.addEventListener("DOMContentLoaded", () => {
+        scrapeLinkedInProfile();
+      });
       sendResponse({ status: 'ok' });
       return true; // Indique une réponse asynchrone
     }
   });
 }
 
-// /**
-//  * Vérifie si la page actuelle est une page de profil LinkedIn Recruiter.
-//  * @returns {boolean} - Vrai si l'URL correspond à une page profil LinkedIn Recruiter.
-//  */
-// function isOnLinkedInProfilePage() {
-//   return location.href.startsWith("https://www.linkedin.com/talent/hire/") &&
-//          location.href.includes("/manage/all/profile/");
-// }
+/**
+ * Vérifie si la page actuelle est une page de profil LinkedIn Recruiter.
+ * @returns {boolean} - Vrai si l'URL correspond à une page profil LinkedIn Recruiter.
+ */
+function isOnLinkedInProfilePage() {
+  return location.href.startsWith("https://www.linkedin.com/talent/hire/") &&
+         location.href.includes("/manage/all/profile/");
+}
 
 /**
  * Extrait les données du profil LinkedIn, y compris les pièces jointes.
@@ -24,12 +26,10 @@ if (!window.scraperListenerRegistered) {
  * @returns {Promise<Object>} - Objet contenant les données extraites (nom, email, téléphone, URL publique).
  */
 async function extractProfileDataWithAttachments() {
-  await waitForRequiredProfileElements();
-
   const { firstName, lastName } = extractNameFromNoteButton();
   await openAttachmentsTab();
 
-  const email = document.querySelector("span[data-test-contact-email-address]")?.textContent.trim() || null;
+  const email = document.querySelector("span[data-test-contact-email-address]")?.textContent.trim() || `${firstName}_${lastName.replace(/\s+/g, "_")}@linkedin.com`;
   const phone = document.querySelector("span[data-test-contact-phone][data-live-test-contact-phone]")?.textContent.trim() || null;
   const publicProfileUrl = document.querySelector("a[data-test-public-profile-link]")?.href || null;
 
@@ -43,20 +43,6 @@ async function extractProfileDataWithAttachments() {
 
   console.log("[LinkedIn Recruiter] Données extraites :", scrapedData);
   return scrapedData;
-}
-
-/**
- * Attend que tous les éléments nécessaires au scraping soient chargés dans le DOM.
- * Utilise waitForElement pour chaque sélecteur clé.
- * @returns {Promise<void>}
- */
-async function waitForRequiredProfileElements() {
-  await Promise.all([
-    waitForElement("span[data-test-contact-email-address]"),
-    waitForElement("span[data-test-contact-phone][data-live-test-contact-phone]"),
-    waitForElement("a[data-test-public-profile-link]"),
-    waitForElement('button[title^="Ajouter une note sur"]')
-  ]);
 }
 
 /**
@@ -79,10 +65,8 @@ function extractNameFromNoteButton() {
  * @returns {Promise<void>}
  */
 async function openAttachmentsTab() {
-  await waitForElement('[data-test-navigation-list-item]');
-  const attachmentsTab = await waitForElement('[data-live-test-profile-attachments-tab]');
+  const attachmentsTab = document.querySelector('[data-live-test-profile-attachments-tab]');
   attachmentsTab.click();
-  await waitForElement("[data-test-previewable-attachment]");
   console.log("[LinkedIn Recruiter] Pièces jointes détectées");
 }
 
@@ -100,11 +84,12 @@ function sendScrapedDataToBackground(scrapedData) {
     if (chrome.runtime.lastError) {
       console.error("Message failed:", chrome.runtime.lastError.message);
     } else if (response.status === "success") {
-      console.log("[content] Candidat envoyé avec succès !");
+      console.log("[content] Candidat envoyé avec succès : ", response.message);
     } else {
       console.error("[content] Échec de l'envoi :", response.message);
     }
   });
+  console.log("bien envoyé !");
 }
 
 /**
@@ -112,7 +97,7 @@ function sendScrapedDataToBackground(scrapedData) {
  * Elle gère les erreurs et attend une seconde avant de terminer.
  */
 (async function scrapeLinkedInProfile() {
-  // if (!isOnLinkedInProfilePage()) return;
+  if (!isOnLinkedInProfilePage()) return;
   try {
     const scrapedData = await extractProfileDataWithAttachments();
     if (scrapedData.name && scrapedData.lastName) {
@@ -122,36 +107,6 @@ function sendScrapedDataToBackground(scrapedData) {
     console.error("[LinkedIn Recruiter] Échec du scraping :", error);
   }
 })();
-
-/**
- * Attend l'apparition d'un élément dans le DOM correspondant au sélecteur donné.
- * Utilise un MutationObserver et un timeout par défaut de 20 secondes.
- * @param {string} selector - Sélecteur CSS de l'élément attendu.
- * @param {number} [timeout=20000] - Durée maximale d'attente en ms.
- * @returns {Promise<Element>} - Résout avec l'élément trouvé, rejette si timeout.
- */
-function waitForElement(selector, timeout = 20000) {
-  return new Promise((resolve, reject) => {
-    const existing = document.querySelector(selector);
-    if (existing) return resolve(existing);
-
-    const observer = new MutationObserver(() => {
-      const el = document.querySelector(selector);
-      if (el) {
-        clearTimeout(timeoutId);
-        observer.disconnect();
-        resolve(el);
-      }
-    });
-
-    observer.observe(document.body, { childList: true, subtree: true });
-
-    const timeoutId = setTimeout(() => {
-      observer.disconnect();
-      reject(new Error(`Timeout: Élément ${selector} introuvable`));
-    }, timeout);
-  });
-}
 
 /**
  * Crée un délai asynchrone basé sur un timeout en millisecondes.

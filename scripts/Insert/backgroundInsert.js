@@ -27,14 +27,18 @@ async function handleCandidateMessage(message, sender, sendResponse) {
 
   pendingCandidate = message.scrapedData;
 
-  if (capturedCvUrl) {
-    await handleCvAndSendToMP();
+  // Wait a short time to allow potential CV interception
+  setTimeout(async () => {
+    if (capturedCvUrl) {
+      await handleCvAndSendToMP();
+    } else {
+      console.warn("No CV URL captured — sending candidate without CV.");
+      await openOrSendToMp(pendingCandidate);
+      resetState();
+    }
+
     sendResponse({ status: "success" });
-    return;
-  }
-
-  sendResponse({ status: "success", message: "Waiting for CV URL..." });
-
+  }, 500); // Adjust delay if needed
   return true;
 }
 
@@ -43,12 +47,12 @@ async function handleCandidateMessage(message, sender, sendResponse) {
  * @param {Object} details - Détails de la requête.
  */
 function handleWebRequest(details) {
-  if (!shouldCapture(details.url)) return;
-
-  isHandlingCv = true;
-  capturedCvUrl = details.url;
-  console.log("CV URL intercepted:", capturedCvUrl);
-  processCvIfCandidatePending();
+  if (shouldCapture(details.url)) {
+    isHandlingCv = true;
+    capturedCvUrl = details.url;
+    console.log("CV URL intercepted:", capturedCvUrl);
+    processCvIfCandidatePending();
+  }
 }
 
 /**
