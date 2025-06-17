@@ -82,25 +82,16 @@ if (!window.scraperListenerRegistered) {
   window.scraperListenerRegistered = true;
   chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     if (message.action === "runScraper") {
-      chrome.storage.sync.get("idIndex", ({ idIndex }) => {
-        if (typeof idIndex !== "number" || isNaN(idIndex)) {
-          alert("Index de colonne invalide ou non défini.");
-          sendResponse({ status: 'error', message: 'Invalid index' });
-          return;
-        }
-        runScraper(idIndex);
-        sendResponse({ status: 'ok' });
-      });
+      runScraper();
+      sendResponse({ status: 'ok' });
       return true; // Indique une réponse asynchrone
     }
   });
 }
+// === UTILS =======================================================
 
 /**
  * Détecte l'index de la colonne contenant le numéro de ligne dans un tableau.
- * Recherche l'en-tête 'n°' (insensible à la casse).
- * @param {HTMLTableElement} table - Le tableau HTML à analyser.
- * @returns {number} - Index de la colonne numéro de ligne, 0 par défaut.
  */
 function detectRowNumberColIndex(table) {
   const headers = table.querySelectorAll('thead th');
@@ -111,163 +102,143 @@ function detectRowNumberColIndex(table) {
   return 0;
 }
 
-// ========== Refactorisation de runScraper en fonctions plus petites ==========
+/**
+ * Récupère l'index d'une colonne en fonction de son data-tri-code.
+ */
+function getColumnIndexByTriCode(thead, triCode) {
+  const headers = thead.querySelectorAll('th');
+  for (let i = 0; i < headers.length; i++) {
+    if (headers[i].getAttribute('data-tri-code') === triCode) return i;
+  }
+  return -1;
+}
 
 /**
- * Prépare l'environnement de scraping en chargeant et validant les helpers requis.
- * @returns {Promise<{parameterHandler: object, HighlightHelper: object, ScrollHelper: object}|null>}
+ * Crée un délai.
  */
+function wait(ms) {
+  return new Promise(resolve => setTimeout(resolve, ms));
+}
+
+// === SCRAPER PREP ================================================
+
 async function prepareScraper() {
-  await window.parameterHandlerReady;
-  const parameterHandler = window.parameterHandler;
-  if (!parameterHandler) {
-    console.error("parameterHandler non initialisé.");
+  await Promise.all([
+    window.parameterHandlerReady,
+    window.highlightHelperReady,
+    window.scrollHelperReady,
+  ]);
+
+  const { parameterHandler, HighlightHelper, ScrollHelper } = window;
+  console.log("bim bam boum : ", parameterHandler, HighlightHelper, ScrollHelper);
+
+  if (!parameterHandler || !HighlightHelper || !ScrollHelper) {
+    console.error("Un ou plusieurs helpers sont undefined.");
     return null;
   }
-  await window.highlightHelperReady;
-  const HighlightHelper = window.HighlightHelper;
-  if (!HighlightHelper) {
-    console.error("HighlightHelper est undefined.");
-    return null;
-  }
-  await window.scrollHelperReady;
-  const ScrollHelper = window.ScrollHelper;
-  if (!ScrollHelper) {
-    console.error("ScrollHelper est undefined.");
-    return null;
-  }
+
   return { parameterHandler, HighlightHelper, ScrollHelper };
 }
 
-/**
- * Récupère les éléments clés du tableau HTML et valide leur présence.
- * @returns {{table: HTMLTableElement, thead: HTMLElement, tbody: HTMLElement}|null}
- */
 function getTableElements() {
   const table = document.getElementById('DataTables_Table_0');
-  if (!table) {
-    console.error('Tableau introuvable.');
+  const thead = table?.querySelector('thead');
+  const tbody = table?.querySelector('tbody');
+
+  if (!table || !thead || !tbody) {
+    console.error("Structure du tableau invalide.");
     return null;
   }
-  const thead = table.querySelector('thead');
-  const tbody = table.querySelector('tbody');
-  if (!thead || !tbody) {
-    console.error("Structure du tableau invalide (thead ou tbody manquant).");
-    return null;
-  }
+
   return { table, thead, tbody };
 }
 
-/**
- * Construit un dictionnaire associant les noms des colonnes à leurs index.
- * @param {HTMLElement} thead - Élément thead du tableau.
- * @returns {Object} - Map { nomColonne: index }
- */
-function buildHeaderMap(thead) {
-  const headerMap = {};
-  thead.querySelectorAll('th').forEach((th, index) => {
-    headerMap[th.innerText.trim()] = index;
-  });
-  return headerMap;
+function getRequiredColumnIndices(thead) {
+  const colRechercheIndex = getColumnIndexByTriCode(thead, 'LIBE_RECH_LIEN');
+  const colIdIndex = getColumnIndexByTriCode(thead, 'ID_EMPL');
+
+  return { colRechercheIndex, colIdIndex };
 }
 
-/**
- * Prépare le système de surlignage des colonnes et des en-têtes spécifiques.
- * Injecte les styles et applique les surlignages.
- * @param {object} HighlightHelper - Helper pour la gestion du surlignage.
- * @param {number} idIndex - Index de la colonne à surligner.
- * @param {string[]} headersOfInterest - Liste des en-têtes à surligner.
- * @returns {object} - Fonctions de nettoyage des surlignages.
- */
-function prepareHighlighting(HighlightHelper, idIndex, headersOfInterest) {
+// === HIGHLIGHTING ================================================
+
+function prepareHighlighting(HighlightHelper, columnIndices, headersOfInterest) {
   const {
     injectHighlightStyles,
     clearAllHighlights,
     highlightByHeaderLabel,
     applyColumnHighlight,
     fadeOutHighlightByHeaderLabel,
-    fadeOutColumnHighlight
+    fadeOutColumnHighlight,
   } = HighlightHelper;
 
   injectHighlightStyles();
-  applyColumnHighlight(idIndex);
+
+  const indices = Array.isArray(columnIndices) ? columnIndices : [columnIndices];
+  indices.forEach(applyColumnHighlight);
+
   highlightByHeaderLabel(headersOfInterest);
 
   return {
     clearAllHighlights,
     fadeOutHighlightByHeaderLabel,
-    fadeOutColumnHighlight
+    fadeOutColumnHighlight,
   };
 }
 
-/**
- * Récupère le conteneur scrollable parent du tableau et les helpers de scroll.
- * @param {object} ScrollHelper - Helper pour la gestion du scroll.
- * @param {HTMLTableElement} table - Le tableau HTML.
- * @returns {object} - Conteneur scrollable et fonctions de scroll.
- */
+// === SCROLLING ===================================================
+
 function getScrollContainerAndHelpers(ScrollHelper, table) {
   const {
     getScrollableParent,
     scrollToTop,
-    scrollAndCollectRows
+    scrollAndCollectRows,
   } = ScrollHelper;
 
-  const scrollContainer = getScrollableParent(table) || window;
-  return { scrollContainer, scrollToTop, scrollAndCollectRows };
-}
-
-/**
- * Crée une fonction pour traiter chaque ligne du tableau et extraire les données importantes.
- * @param {number} rowNumberColIndex - Index de la colonne numéro de ligne.
- * @param {number} idIndex - Index de la colonne ID.
- * @param {Object} headerMap - Map des noms de colonnes vers index.
- * @param {string} HEADER_RECHERCHE - Nom de la colonne "Recherche / Demande de poste".
- * @param {Array} data - Tableau où stocker les objets extraits.
- * @param {Array} lines - Tableau où stocker les lignes texte exportées.
- * @returns {Function} - Fonction qui traite une ligne HTML.
- */
-function createProcessRowFn(rowNumberColIndex, idIndex, headerMap, HEADER_RECHERCHE, data, lines) {
-  return (row) => {
-    const cells = row.querySelectorAll('td');
-    if (cells.length === 0) return;
-    const rowNumberCell = cells[rowNumberColIndex];
-    const rowNumber = rowNumberCell?.textContent?.trim() || (data.length + 1);
-    const idCell = cells[idIndex];
-    if (!idCell || !idCell.innerText.trim()) return;
-    const id = idCell.innerText.trim();
-    const recherche = cells[headerMap[HEADER_RECHERCHE]]?.innerText.trim() || '?';
-
-    lines.push(`${rowNumber}. ${recherche} | ${id}`);
-    data.push({ [HEADER_RECHERCHE]: recherche, ID: id });
+  return {
+    scrollContainer: getScrollableParent(table) || window,
+    scrollToTop,
+    scrollAndCollectRows,
   };
 }
 
-/**
- * Exporte les résultats du scraping en fichiers CSV et TXT téléchargeables.
- * @param {object} parameterHandler - Handler pour l'export CSV.
- * @param {Array<string>} lines - Lignes texte brutes à exporter en TXT.
- */
+// === EXPORT ======================================================
+
 function exportResults(parameterHandler, lines) {
   const csvText = parameterHandler.export();
-  const blob = new Blob([csvText], { type: 'text/csv' });
-  const link = document.createElement('a');
-  link.href = URL.createObjectURL(blob);
-  link.download = 'scraped_results.csv';
-  link.click();
 
-  const txtBlob = new Blob([lines.join('\n')], { type: 'text/plain' });
-  const txtLink = document.createElement('a');
-  txtLink.href = URL.createObjectURL(txtBlob);
-  txtLink.download = 'raw_output_lines.txt';
-  txtLink.click();
+  const createAndClickDownloadLink = (blob, filename) => {
+    const link = document.createElement('a');
+    link.href = URL.createObjectURL(blob);
+    link.download = filename;
+    link.click();
+  };
+
+  createAndClickDownloadLink(new Blob([csvText], { type: 'text/csv' }), 'scraped_results.csv');
+  createAndClickDownloadLink(new Blob([lines.join('\n')], { type: 'text/plain' }), 'raw_output_lines.txt');
 }
 
-/**
- * Fonction principale de scraping : charge l'environnement, collecte et exporte les données du tableau.
- * @param {number} idIndex - Index de la colonne ID à scraper.
- */
-async function runScraper(idIndex) {
+// === ROW PROCESSING ==============================================
+
+function makeProcessRowFn({ rowNumberColIndex, colIdIndex, colRechercheIndex, data, lines }) {
+  return (row) => {
+    const cells = row.querySelectorAll('td');
+    if (!cells.length) return;
+
+    const rowNumber = cells[rowNumberColIndex]?.textContent?.trim() || (data.length + 1);
+    const id = cells[colIdIndex]?.textContent?.trim() || '';
+    const recherche = cells[colRechercheIndex]?.textContent?.trim() || '?';
+
+    if (!id) return;
+
+    lines.push(`${rowNumber}. ${recherche} | ${id}`);
+    data.push({ LIBE_RECH_LIEN: recherche, ID_EMPL: id });
+  };
+}
+
+// === MAIN SCRAPER ================================================
+
+async function runScraper() {
   const prepared = await prepareScraper();
   if (!prepared) return;
   const { parameterHandler, HighlightHelper, ScrollHelper } = prepared;
@@ -276,42 +247,54 @@ async function runScraper(idIndex) {
   if (!tableElements) return;
   const { table, thead, tbody } = tableElements;
 
-  const headerMap = buildHeaderMap(thead);
+  const { colRechercheIndex, colIdIndex } = getRequiredColumnIndices(thead);
+  if (colRechercheIndex === -1 || colIdIndex === -1) {
+    console.error("Colonnes requises non trouvées.");
+    alert("Colonnes LIBE_RECH_LIEN ou ID_EMPL manquantes.");
+    return;
+  }
+
   const rowNumberColIndex = detectRowNumberColIndex(table);
-  const HEADER_RECHERCHE = 'Recherche / Demande de poste';
-  const data = [];
-  const lines = [];
+  const columnIndices = [colIdIndex, colRechercheIndex];
+  const triCodes = ['LIBE_RECH_LIEN', 'ID_EMPL'];
+  const data = [], lines = [];
 
-  parameterHandler.nomColonnes = [HEADER_RECHERCHE, 'ID'];
+  parameterHandler.nomColonnes = triCodes;
   parameterHandler.donnees = data;
-
-  const headersOfInterest = [HEADER_RECHERCHE];
 
   const {
     clearAllHighlights,
     fadeOutHighlightByHeaderLabel,
-    fadeOutColumnHighlight
-  } = prepareHighlighting(HighlightHelper, idIndex, headersOfInterest);
+    fadeOutColumnHighlight,
+  } = prepareHighlighting(HighlightHelper, columnIndices, triCodes);
 
-  const { scrollContainer, scrollToTop, scrollAndCollectRows } = getScrollContainerAndHelpers(ScrollHelper, table);
+  const {
+    scrollContainer,
+    scrollToTop,
+    scrollAndCollectRows,
+  } = getScrollContainerAndHelpers(ScrollHelper, table);
 
   scrollToTop(scrollContainer);
-  await new Promise(r => setTimeout(r, 50));
-
-  const processRowFn = createProcessRowFn(rowNumberColIndex, idIndex, headerMap, HEADER_RECHERCHE, data, lines);
+  await wait(50);
 
   const seenRows = new WeakSet();
+  const processRowFn = makeProcessRowFn({
+    rowNumberColIndex,
+    colIdIndex,
+    colRechercheIndex,
+    data,
+    lines,
+  });
 
   await scrollAndCollectRows({ tbody, scrollContainer, processRowFn, seenRows, lines });
+  await wait(30);
 
-  await new Promise(r => setTimeout(r, 30));
-
-  fadeOutHighlightByHeaderLabel(headersOfInterest);
-  fadeOutColumnHighlight(idIndex);
+  fadeOutHighlightByHeaderLabel(triCodes);
+  columnIndices.forEach(fadeOutColumnHighlight);
   clearAllHighlights();
 
   if (data.length === 0) {
-    alert("Aucune donnée n'a été collectée. Vérifier que le tableau soit chargé et que l'index de colonne soit correct.");
+    alert("Aucune donnée n'a été trouvée.");
     return;
   }
 

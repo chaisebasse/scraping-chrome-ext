@@ -38,7 +38,7 @@ async function handleCandidateMessage(message, sender, sendResponse) {
     }
 
     sendResponse({ status: "success" });
-  }, 500); // Adjust delay if needed
+  }, 500);
   return true;
 }
 

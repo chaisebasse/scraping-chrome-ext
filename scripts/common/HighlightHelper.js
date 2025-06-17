@@ -10,7 +10,6 @@ export function clearAllHighlights() {
 
 /**
  * Injecte dynamiquement le CSS de surlignage (une seule fois par page).
- * Ce CSS permet d'ajouter un fond doré et une transition douce.
  */
 export function injectHighlightStyles() {
 	clearAllHighlights();
@@ -24,7 +23,6 @@ export function injectHighlightStyles() {
 				background-color: gold !important;
 				color: black !important;
 			}
-
 			th.with-transition {
 				transition: background-color 0.4s ease-in-out;
 			}
@@ -34,20 +32,54 @@ export function injectHighlightStyles() {
 }
 
 /**
+ * Retourne l'en-tête (ligne <tr>) visible à surligner.
+ */
+function getVisibleHeaderRow() {
+	const table = document.querySelector("table:not(#DataTables_Table_0)");
+	if (!table) return null;
+	const thead = table.querySelector("thead");
+	if (!thead) return null;
+
+	// Choisit la dernière ligne de l'en-tête (la plus probable pour les vrais libellés)
+	const rows = thead.querySelectorAll("tr");
+	return rows.length ? rows[rows.length - 1] : null;
+}
+
+/**
+ * Récupère toutes les cellules <th> visibles de l'en-tête.
+ */
+function getVisibleHeaderCells() {
+	const headerRow = getVisibleHeaderRow();
+	return headerRow ? [...headerRow.querySelectorAll("th")] : [];
+}
+
+/**
  * Surligne les colonnes dont l'en-tête correspond à un ou plusieurs libellés donnés.
  * 
  * @param {string[]} headers - Liste des intitulés à surligner.
  */
 export function highlightByHeaderLabel(headers) {
-	const visibleHeaderTable = document.querySelector("table:not(#DataTables_Table_0)");
-	if (!visibleHeaderTable) return;
-
-	const visibleHeaders = visibleHeaderTable.querySelectorAll("thead th");
-
-	visibleHeaders.forEach((th, i) => {
+	const thElements = getVisibleHeaderCells();
+	thElements.forEach(th => {
 		const text = th.textContent?.trim();
 		if (headers.includes(text)) {
 			th.classList.add("with-transition", "highlight-color");
+		}
+	});
+}
+
+/**
+ * Supprime le surlignage basé sur les libellés des colonnes.
+ * 
+ * @param {string[]} headers - Liste des en-têtes à désactiver.
+ */
+export function fadeOutHighlightByHeaderLabel(headers) {
+	const thElements = getVisibleHeaderCells();
+	thElements.forEach(th => {
+		const text = th.textContent?.trim();
+		if (headers.includes(text)) {
+			th.classList.remove("highlight-color");
+			setTimeout(() => th.classList.remove("with-transition"), 1000);
 		}
 	});
 }
@@ -58,33 +90,11 @@ export function highlightByHeaderLabel(headers) {
  * @param {number} colIndex - Index de la colonne à surligner.
  */
 export function applyColumnHighlight(colIndex) {
-	const visibleHeaderTable = document.querySelector('table:not(#DataTables_Table_0)');
-	if (visibleHeaderTable) {
-		const headerCell = visibleHeaderTable.querySelector(`thead th:nth-child(${colIndex + 1})`);
-		if (headerCell) {
-			headerCell.classList.add('with-transition', 'highlight-color');
-		}
+	const thElements = getVisibleHeaderCells();
+	const th = thElements[colIndex];
+	if (th) {
+		th.classList.add("with-transition", "highlight-color");
 	}
-}
-
-/**
- * Supprime le surlignage basé sur les libellés des colonnes.
- * 
- * @param {string[]} headers - Liste des en-têtes à désactiver.
- */
-export function fadeOutHighlightByHeaderLabel(headers) {
-	const visibleHeaderTable = document.querySelector("table:not(#DataTables_Table_0)");
-	if (!visibleHeaderTable) return;
-
-	const visibleHeaders = visibleHeaderTable.querySelectorAll("thead th");
-
-	visibleHeaders.forEach((th, i) => {
-		const text = th.textContent?.trim();
-		if (headers.includes(text)) {
-			th.classList.remove("highlight-color");
-			setTimeout(() => th.classList.remove("with-transition"), 1000);
-		}
-	});
 }
 
 /**
@@ -93,12 +103,10 @@ export function fadeOutHighlightByHeaderLabel(headers) {
  * @param {number} colIndex - Index de la colonne à désactiver.
  */
 export function fadeOutColumnHighlight(colIndex) {
-	const visibleHeaderTable = document.querySelector('table:not(#DataTables_Table_0)');
-	if (visibleHeaderTable) {
-		const headerCell = visibleHeaderTable.querySelector(`thead th:nth-child(${colIndex + 1})`);
-		if (headerCell) {
-			headerCell.classList.remove('highlight-color');
-			setTimeout(() => headerCell.classList.remove('with-transition'), 1000);
-		}
+	const thElements = getVisibleHeaderCells();
+	const th = thElements[colIndex];
+	if (th) {
+		th.classList.remove("highlight-color");
+		setTimeout(() => th.classList.remove("with-transition"), 1000);
 	}
 }

@@ -41,14 +41,29 @@
       button:hover {
         background-color: #45a049;
       }
+
+      .page {
+        display: none;
+      }
+
+      .page.active {
+        display: block;
+      }
     </style>
   </head>
   <body>
-    <label for="indexInput">Index de la colonne ID (0-based) :</label>
-    <input type="number" id="indexInput" min="0" />
-    <button id="runBtn">Run MP Scraper</button>
+    <div id="mainPage" class="page active">
+      <button id="runBtn">Run MP Scraper</button>
+  
+      <button id="runLinkedInBtn">Run LinkedIn Scraper</button>
+      <button id="showErrorsBtn">Voir erreurs</button>
+    </div>
 
-    <button id="runLinkedInBtn">Run LinkedIn Scraper</button>
+    <div id="errorPage" class="page">
+      <h3>Erreurs de scraping :</h3>
+      <div id="errorList"></div>
+      <button id="backBtn">Retour</button>
+    </div>
 
     <script src="./scripts/popup.js"></script>
   </body>

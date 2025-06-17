@@ -46,12 +46,15 @@ function extractFk() {
  * @param {string} fk Le numéro interne à associer au CV
  */
 async function uploadCandidateCv(fk) {
+  const cvBlob = await getLinkedinCv();
+  if (!cvBlob) {
+    return;
+  }
   try {
-    const cvBlob = await getLinkedinCv();
     const pk = await uploadPdfToMP(cvBlob, fk);
     console.log("PDF uploadé, pk reçu :", pk);
   } catch (err) {
-    console.error("Erreur lors de l’upload du PDF :", err);
+    console.error("Erreur lors de l'upload du PDF :", err);
   }
 }
 
@@ -87,11 +90,7 @@ function getLinkedinCv(timeout = 5000) {
       const base64 = sessionStorage.getItem("linkedinCvBase64");
       if (base64) return resolveSafeBlob(base64, resolve, reject);
 
-      if (Date.now() < deadline) {
-        setTimeout(tryResolveCv, 300);
-      } else {
-        reject(new Error("Timeout: base64 linkedinCvBase64 introuvable dans sessionStorage"));
-      }
+      if (Date.now() < deadline) setTimeout(tryResolveCv, 300);
     };
 
     tryResolveCv();

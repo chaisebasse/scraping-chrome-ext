@@ -1,25 +1,8 @@
 // Attend que le DOM soit complètement chargé avant d'exécuter le script
 document.addEventListener("DOMContentLoaded", () => {
-  const input = document.getElementById("indexInput");
   const runMPButton = document.getElementById("runBtn");
   const runLinkedInButton = document.getElementById("runLinkedInBtn");
-
-  // Chargement de l'index sauvegardé dans le stockage Chrome (si existant)
-  chrome.storage.sync.get("idIndex", (data) => {
-    if (typeof data.idIndex === "number") {
-      input.value = data.idIndex;
-    }
-  });
-
-  // Sauvegarde automatique de l'index dès que l'utilisateur modifie la saisie
-  input.addEventListener("input", () => {
-    const index = parseInt(input.value, 10);
-    if (!isNaN(index)) {
-      console.log("Sauvegarde de l'index :", index);
-      chrome.storage.sync.set({ idIndex: index });
-    }
-  });
-
+  
   // Fonction générique pour injecter un script et envoyer un message
   function injectAndSend(scriptPath, messageAction) {
     chrome.tabs.query({ active: true, currentWindow: true }, async ([tab]) => {
@@ -50,5 +33,23 @@ document.addEventListener("DOMContentLoaded", () => {
   // Bouton pour LinkedIn
   runLinkedInButton.addEventListener("click", () => {
     injectAndSend("scripts/Linkedin/content.js", "runLinkedinScraper");
+  });
+
+  const mainPage = document.getElementById("mainPage");
+  const errorPage = document.getElementById("errorPage");
+  const showErrorsBtn = document.getElementById("showErrorsBtn");
+  const backBtn = document.getElementById("backBtn");
+
+  function showPage(pageToShow, pageToHide) {
+    pageToHide.classList.remove("active");
+    pageToShow.classList.add("active");
+  }
+
+  showErrorsBtn.addEventListener("click", () => {
+    showPage(errorPage, mainPage);
+  });
+
+  backBtn.addEventListener("click", () => {
+    showPage(mainPage, errorPage);
   });
 });
