@@ -111,20 +111,17 @@ function resetState() {
  * @returns {Promise<Uint8Array|undefined>}
  */
 async function fetchPdfAsUint8Array(pdfUrl) {
-  try {
-    const response = await fetch(pdfUrl, {
-      credentials: 'include'
-    });
+  const response = await fetch(pdfUrl, {
+    credentials: 'include'
+  });
 
-    if (!response.ok) {
-      throw new Error(`Failed to fetch PDF: ${response.status} ${response.statusText}`);
-    }
-
-    const arrayBuffer = await response.arrayBuffer();
-    return new Uint8Array(arrayBuffer);
-  } catch (error) {
-    console.warn("Pb : ", error);
+  if (!response.ok) {
+    console.log(`Failed to fetch PDF: ${response.status} ${response.statusText}`);
+    return;
   }
+
+  const arrayBuffer = await response.arrayBuffer();
+  return new Uint8Array(arrayBuffer);
 }
 
 /**

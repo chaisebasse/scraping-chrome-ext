@@ -79,7 +79,7 @@ function base64ToBlob(base64, contentType = 'application/pdf') {
  * @param {number} [timeout=15000] Timeout en millisecondes
  * @returns {Promise<Blob>} Résout avec un Blob PDF ou rejette en cas de timeout
  */
-function getLinkedinCv(timeout = 15000) {
+function getLinkedinCv(timeout = 5000) {
   const deadline = Date.now() + timeout;
 
   return new Promise((resolve, reject) => {

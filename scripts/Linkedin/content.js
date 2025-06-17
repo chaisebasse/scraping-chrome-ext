@@ -66,8 +66,32 @@ function extractNameFromNoteButton() {
  */
 async function openAttachmentsTab() {
   const attachmentsTab = document.querySelector('[data-live-test-profile-attachments-tab]');
-  attachmentsTab.click();
-  console.log("[LinkedIn Recruiter] Pièces jointes détectées");
+  if (!attachmentsTab) {
+    console.warn("[LinkedIn Recruiter] Tab not found.");
+    return;
+  }
+
+  const count = extractAttachmentCount(attachmentsTab);
+  if (count < 1) {
+    console.log(`[LinkedIn Recruiter] Aucune pièce jointe détectée (count = ${count}). Onglet non cliqué.`);
+    return;
+  }
+
+  await clickAttachmentsTab(attachmentsTab, count);
+}
+
+function extractAttachmentCount(tabElement) {
+  const labelText = tabElement?.querySelector('div')?.innerText?.trim() || '';
+  const match = labelText.match(/\((\d+)\)/);
+  return match ? parseInt(match[1], 10) : 0;
+}
+
+async function clickAttachmentsTab(tab, count) {
+  const rDelay = getRandomDelay();
+  console.log(`[LinkedIn Recruiter] ${count} pièce(s) jointe(s) détectée(s). Attente de ${rDelay}ms avant clic...`);
+  await delay(rDelay);
+  tab.click();
+  console.log("[LinkedIn Recruiter] Onglet pièces jointes cliqué.");
 }
 
 /**
@@ -115,4 +139,8 @@ function sendScrapedDataToBackground(scrapedData) {
  */
 function delay(ms) {
   return new Promise(resolve => setTimeout(resolve, ms));
+}
+
+function getRandomDelay(min = 0, max = 1000) {
+  return Math.floor(Math.random() * (max - min + 1)) + min;
 }

@@ -8,7 +8,7 @@ function getFormInputMapping() {
     name: "MP:PREN",
     phone: "MP:TELE",
     email: "MP:MAIL",
-    publicProfileUrl: "MP:COMM_CV",
+    // publicProfileUrl: "MP:COMM_CV",
   };
 }
 
@@ -22,7 +22,6 @@ function populateInput(inputName, value) {
   if (!value) return;
 
   const input = document.querySelector(`input[name="${inputName}"]`);
-
   if (input) {
     input.value = value;
     input.dispatchEvent(new Event("input", { bubbles: true }));
