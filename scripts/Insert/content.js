@@ -50,14 +50,9 @@ function fillFormFields(scrapedData) {
 
   for (const [dataKey, inputName] of Object.entries(mapping)) {
     // Remplacer testValues par scrapedData pour l'usage réel
-    populateInput(inputName, testValues[dataKey]);
-    // populateInput(inputName, scrapedData[dataKey]);
+    // populateInput(inputName, testValues[dataKey]);
+    populateInput(inputName, scrapedData[dataKey]);
   }
-  debugger;
-
-  setTimeout(() => {
-    console.log("Continuing after delay...");
-  }, 10000);  // 10 seconds pause
 }
 
 /**

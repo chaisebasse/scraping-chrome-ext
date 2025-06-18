@@ -19,7 +19,7 @@ export function handleInsertToMP() {
  * @param {Object} sender - Expéditeur du message.
  * @param {Function} sendResponse - Fonction pour répondre.
  */
-async function handleCandidateMessage(message, sender, sendResponse) {
+function handleCandidateMessage(message, sender, sendResponse) {
   if (message.action !== "send_candidate_data") {
     sendResponse({ status: "error", message: `action inconnue ${message.action}` });
     return;
@@ -27,18 +27,18 @@ async function handleCandidateMessage(message, sender, sendResponse) {
 
   pendingCandidate = message.scrapedData;
 
-  // Wait a short time to allow potential CV interception
-  setTimeout(async () => {
-    if (capturedCvUrl) {
-      await handleCvAndSendToMP();
-    } else {
-      console.warn("No CV URL captured — sending candidate without CV.");
-      await openOrSendToMp(pendingCandidate);
-      resetState();
-    }
+  delay(500)
+    .then(() => {
+      if (capturedCvUrl) {
+        return handleCvAndSendToMP();
+      } else {
+        console.warn("No CV URL captured — sending candidate without CV.");
+        return openOrSendToMp(pendingCandidate).then(() => resetState());
+      }
+    })
+    .then(() => sendResponse({ status: "success" }))
+    .catch(err => sendResponse({ status: "error", message: err.message }));
 
-    sendResponse({ status: "success" });
-  }, 500);
   return true;
 }
 
@@ -208,4 +208,13 @@ function uint8ArrayToBase64(uint8Array) {
     binary += String.fromCharCode(uint8Array[i]);
   }
   return btoa(binary);
+}
+
+/**
+ * Crée un délai asynchrone basé sur un timeout en millisecondes.
+ * @param {number} ms - Durée du délai en millisecondes.
+ * @returns {Promise<void>}
+ */
+function delay(ms) {
+  return new Promise(resolve => setTimeout(resolve, ms));
 }

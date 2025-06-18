@@ -2,7 +2,7 @@
 document.addEventListener("DOMContentLoaded", () => {
   const runMPButton = document.getElementById("runBtn");
   const runLinkedInButton = document.getElementById("runLinkedInBtn");
-  
+
   // Fonction générique pour injecter un script et envoyer un message
   function injectAndSend(scriptPath, messageAction) {
     chrome.tabs.query({ active: true, currentWindow: true }, async ([tab]) => {
