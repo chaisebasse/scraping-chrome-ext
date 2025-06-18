@@ -1,3 +1,7 @@
+/**
+ * Enregistre un listener pour écouter les messages envoyés par le background script.
+ * Si l'action reçue est "runLinkedinScraper", lance le routeur de scraping.
+ */
 if (!window.scraperListenerRegistered) {
   window.scraperListenerRegistered = true;
   chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
@@ -9,6 +13,9 @@ if (!window.scraperListenerRegistered) {
   });
 }
 
+/**
+ * Redirige le scraping selon la page LinkedIn courante : profil ou liste.
+ */
 function routeScraperBasedOnPage() {
   if (isOnLinkedInProfilePage()) {
     scrapeLinkedInProfile();
@@ -20,14 +27,18 @@ function routeScraperBasedOnPage() {
 }
 
 /**
- * Vérifie si la page actuelle est une page de profil LinkedIn Recruiter.
- * @returns {boolean} - Vrai si l'URL correspond à une page profil LinkedIn Recruiter.
+ * Vérifie si l'URL actuelle correspond à une page de profil LinkedIn Recruiter.
+ * @returns {boolean}
  */
 function isOnLinkedInProfilePage() {
   return location.href.startsWith("https://www.linkedin.com/talent/hire/") &&
          location.href.includes("/manage/all/profile/");
 }
 
+/**
+ * Vérifie si l'URL actuelle correspond à une liste de candidats LinkedIn Recruiter.
+ * @returns {boolean}
+ */
 function isOnLinkedInListPage() {
   return location.href.startsWith("https://www.linkedin.com/talent/hire/") &&
          !location.href.includes("/profile/");
@@ -35,8 +46,7 @@ function isOnLinkedInListPage() {
 
 /**
  * Extrait les données du profil LinkedIn, y compris les pièces jointes.
- * Attend que les éléments nécessaires soient présents avant extraction.
- * @returns {Promise<Object>} - Objet contenant les données extraites (nom, email, téléphone, URL publique).
+ * @returns {Promise<Object>} - Données extraites : prénom, nom, email, téléphone, URL publique.
  */
 async function extractProfileDataWithAttachments() {
   const { firstName, lastName } = extractNameFromNoteButton();
@@ -59,8 +69,8 @@ async function extractProfileDataWithAttachments() {
 }
 
 /**
- * Extrait le prénom et le nom à partir du titre du bouton "Ajouter une note sur ...".
- * @returns {{firstName: string|null, lastName: string|null}} - Prénom et nom extraits.
+ * Extrait le prénom et le nom à partir du bouton "Ajouter une note sur ...".
+ * @returns {{firstName: string|null, lastName: string|null}}
  */
 function extractNameFromNoteButton() {
   const noteButton = document.querySelector("#note-list-title + button[title^='Ajouter une note sur']");
@@ -73,8 +83,7 @@ function extractNameFromNoteButton() {
 }
 
 /**
- * Ouvre l'onglet "Pièces jointes" dans l'interface LinkedIn Recruiter
- * et attend que les pièces jointes soient chargées.
+ * Ouvre l’onglet des pièces jointes si des pièces sont disponibles.
  * @returns {Promise<void>}
  */
 async function openAttachmentsTab() {
@@ -93,12 +102,22 @@ async function openAttachmentsTab() {
   await clickAttachmentsTab(attachmentsTab, count);
 }
 
+/**
+ * Extrait le nombre de pièces jointes affiché dans l'onglet.
+ * @param {Element} tabElement
+ * @returns {number}
+ */
 function extractAttachmentCount(tabElement) {
   const labelText = tabElement?.querySelector('div')?.innerText?.trim() || '';
   const match = labelText.match(/\((\d+)\)/);
   return match ? parseInt(match[1], 10) : 0;
 }
 
+/**
+ * Simule un clic sur l'onglet des pièces jointes après un délai aléatoire.
+ * @param {Element} tab - Élément HTML de l’onglet.
+ * @param {number} count - Nombre de pièces jointes.
+ */
 async function clickAttachmentsTab(tab, count) {
   const rDelay = getRandomInRange();
   console.log(`[LinkedIn Recruiter] ${count} pièce(s) jointe(s) détectée(s). Attente de ${rDelay}ms avant clic...`);
@@ -109,7 +128,6 @@ async function clickAttachmentsTab(tab, count) {
 
 /**
  * Envoie les données extraites au background script de l'extension.
- * Gère la réponse et log les succès ou erreurs.
  * @param {Object} scrapedData - Données extraites à envoyer.
  */
 function sendScrapedDataToBackground(scrapedData) {
@@ -130,8 +148,7 @@ function sendScrapedDataToBackground(scrapedData) {
 }
 
 /**
- * Fonction principale auto-exécutée qui lance le scraping si on est sur la bonne page.
- * Elle gère les erreurs et attend une seconde avant de terminer.
+ * Fonction principale qui déclenche le scraping d’un profil LinkedIn.
  */
 async function scrapeLinkedInProfile() {
   if (!isOnLinkedInProfilePage()) return;
@@ -146,17 +163,21 @@ async function scrapeLinkedInProfile() {
 }
 
 /**
- * Crée un délai asynchrone basé sur un timeout en millisecondes.
- * @param {number} ms - Durée du délai en millisecondes.
+ * Crée une promesse avec un délai d’attente en millisecondes.
+ * @param {number} ms
  * @returns {Promise<void>}
  */
 function delay(ms) {
   return new Promise(resolve => setTimeout(resolve, ms));
 }
 
+/**
+ * Scrape tous les profils présents dans une liste LinkedIn Recruiter.
+ * Scrolle lentement pour charger, puis scrolle vers le haut, et traite chaque lien.
+ */
 async function scrapeListOfProfiles() {
   console.log("[LinkedIn Recruiter] Début du scroll pour charger tous les candidats...");
-  
+
   await fastScrollToTop();
   await scrollToBottom();
   await fastScrollToTop();
@@ -186,6 +207,10 @@ async function scrapeListOfProfiles() {
   console.log("[LinkedIn Recruiter] Scraping de la liste terminé.");
 }
 
+/**
+ * Scrolle lentement jusqu'en bas de la page pour forcer le chargement dynamique.
+ * @returns {Promise<void>}
+ */
 async function scrollToBottom() {
   return new Promise(resolve => {
     function performMiniScrolls(count, done) {
@@ -228,10 +253,10 @@ async function scrollToBottom() {
   });
 }
 
-function getRandomInRange(min, max) {
-  return Math.floor(Math.random() * (max - min + 1)) + min;
-}
-
+/**
+ * Scrolle instantanément en haut de la page.
+ * @returns {Promise<void>}
+ */
 async function fastScrollToTop() {
   return new Promise(resolve => {
     window.scrollTo({ top: 0, behavior: "auto" });
@@ -239,6 +264,20 @@ async function fastScrollToTop() {
   });
 }
 
+/**
+ * Renvoie un nombre aléatoire dans une plage donnée.
+ * @param {number} min
+ * @param {number} max
+ * @returns {number}
+ */
+function getRandomInRange(min = 300, max = 1500) {
+  return Math.floor(Math.random() * (max - min + 1)) + min;
+}
+
+/**
+ * Extrait les liens vers les profils candidats dans la liste.
+ * @returns {HTMLElement[]} - Tableau de liens.
+ */
 function getCandidateListLinks() {
   const listItems = document.querySelectorAll(
     'ol[data-test-paginated-list] li div[data-test-paginated-list-item]'
@@ -255,6 +294,11 @@ function getCandidateListLinks() {
   return links;
 }
 
+/**
+ * Attend que la navigation vers un profil soit complète.
+ * @param {number} timeout - Temps maximum d'attente (ms).
+ * @returns {Promise<void>}
+ */
 async function waitForProfileOpen(timeout = 10000) {
   const start = Date.now();
   while (!isOnLinkedInProfilePage()) {
@@ -263,9 +307,13 @@ async function waitForProfileOpen(timeout = 10000) {
     }
     await delay(300);
   }
-  await delay(1000); // Let render finish
+  await delay(1000);
 }
 
+/**
+ * Ferme le profil LinkedIn ouvert, soit par clic extérieur soit via le bouton.
+ * @returns {Promise<void>}
+ */
 async function closeProfile() {
   const useClickOutside = Math.random() < 0.5;
 
@@ -287,6 +335,10 @@ async function closeProfile() {
   }
 }
 
+/**
+ * Simule un clic à un endroit aléatoire dans un élément.
+ * @param {Element} element - Élément cible.
+ */
 function clickRandomSpotInside(element) {
   const rect = element.getBoundingClientRect();
 
@@ -305,13 +357,15 @@ function clickRandomSpotInside(element) {
   });
 }
 
+/**
+ * Génère un décalage aléatoire avec biais vers des zones spécifiques.
+ * @param {number} length - Longueur ou hauteur disponible.
+ * @returns {number}
+ */
 function getRandomOffset(length) {
-  const biasZones = [
-    0.1, // near left/top
-    0.5, // center
-    0.9  // near right/bottom
-  ];
+  const biasZones = [0.1, 0.5, 0.9];
   const bias = biasZones[Math.floor(Math.random() * biasZones.length)];
-  const fuzz = (Math.random() - 0.5) * 20; // ±10px
-  return Math.max(1, Math.min(length - 1, length * bias + fuzz));
+  const offset = length * bias;
+  const variance = Math.random() * length * 0.05;
+  return offset + variance;
 }
