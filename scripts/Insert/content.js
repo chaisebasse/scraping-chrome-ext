@@ -8,6 +8,7 @@ function getFormInputMapping() {
     name: "MP:PREN",
     phone: "MP:TELE",
     email: "MP:MAIL",
+    jobId: "MP:ID_RECH",
     // publicProfileUrl: "MP:COMM_CV",
   };
 }
@@ -21,14 +22,29 @@ function getFormInputMapping() {
 function populateInput(inputName, value) {
   if (!value) return;
 
-  const input = document.querySelector(`input[name="${inputName}"]`);
-  if (input) {
-    input.value = value;
-    input.dispatchEvent(new Event("input", { bubbles: true }));
-    input.dispatchEvent(new Event("change", { bubbles: true }));
-  } else {
-    console.warn(`No input or textarea found with name="${inputName}"`);
+  const element = document.querySelector(`[name="${inputName}"]`);
+  if (!element) {
+    console.warn(`No input/select/textarea found with name="${inputName}"`);
+    return;
   }
+
+  if (element.tagName.toLowerCase() === "select") {
+    const option = [...element.options].find(opt => opt.value === value);
+    if (option) {
+      element.value = value;
+      triggerFormEvents(element);
+    } else {
+      console.warn(`No option with value "${value}" found in select[name="${inputName}"]`);
+    }
+  } else {
+    element.value = value;
+    triggerFormEvents(element);
+  }
+}
+
+function triggerFormEvents(element) {
+  element.dispatchEvent(new Event("input", { bubbles: true }));
+  element.dispatchEvent(new Event("change", { bubbles: true }));
 }
 
 /**
@@ -39,29 +55,51 @@ function populateInput(inputName, value) {
 function fillFormFields(scrapedData) {
   const mapping = getFormInputMapping();
 
-  // Valeurs de test, à remplacer par les vraies données lors du déploiement
   const testValues = {
     lastName: "TestNom",
     name: "TestPrenom",
     phone: "0600000000",
     email: "test@example.com",
+    jobId: "759",
     publicProfileUrl: "https://linkedin.com/in/test",
   };
 
-  for (const [dataKey, inputName] of Object.entries(mapping)) {
-    // Remplacer testValues par scrapedData pour l'usage réel
-    // populateInput(inputName, testValues[dataKey]);
-    populateInput(inputName, scrapedData[dataKey]);
-  }
+  return requestSelectedJobId()
+    .then((selectedJobId) => {
+      if (selectedJobId) {
+        scrapedData.jobId = selectedJobId;
+      }
+
+      for (const [dataKey, inputName] of Object.entries(mapping)) {
+        // populateInput(inputName, testValues[dataKey]);
+        populateInput(inputName, scrapedData[dataKey]);
+      }
+    })
+    .catch((error) => {
+      console.error("Could not get job ID:", error);
+    });
+}
+
+function requestSelectedJobId() {
+  return new Promise((resolve) => {
+    window.addEventListener("message", function handler(event) {
+      if (event.source !== window) return;
+      if (event.data.type === "FROM_EXTENSION_SELECTED_JOB_ID") {
+        window.removeEventListener("message", handler);
+        resolve(event.data.lastJobId);
+      }
+    });
+
+    window.postMessage({ type: "GET_SELECTED_JOB_ID" }, "*");
+  });
 }
 
 /**
  * Finalise l'interaction avec le formulaire en déclenchant la soumission via oF.submit() si disponible.
  * Enregistre dans sessionStorage un indicateur pour signaler la soumission.
  */
-async function finalizeFormSubmission() {
+function finalizeFormSubmission() {
   if (window.oF && typeof window.oF.submit === "function") {
-    console.log("Soumission du formulaire via oF.submit()");
     window.oF.submit();
     sessionStorage.setItem("justSubmittedCandidateForm", "true");
   } else {
@@ -83,9 +121,10 @@ function wait(ms) {
  * Gère la soumission des données candidates reçues en remplissant le formulaire puis en le soumettant.
  * @param {Object} payload - Données candidates extraites à insérer et soumettre
  */
-async function handleCandidateDataSubmission(payload) {
-  fillFormFields(payload);
-  await finalizeFormSubmission();
+function handleCandidateDataSubmission(payload) {
+  fillFormFields(payload)
+    .then(() => finalizeFormSubmission())
+    .catch((error) => console.error("Error during candidate submission:", error));
 }
 
 /**
@@ -98,19 +137,21 @@ function setupExtensionListener() {
     const { action, payload } = event.detail || {};
 
     if (action === "submit_candidate_data") {
-      if (payload.cvBase64) {
-        try {
-          sessionStorage.setItem('linkedinCvBase64', payload.cvBase64);
-          console.log("PDF base64 stocké dans sessionStorage");
-        } catch (error) {
-          console.error("Erreur lors du stockage du PDF base64 :", error);
-        }
-      }
-
+      if (payload.cvBase64) storeCvBase64(payload.cvBase64);
       handleCandidateDataSubmission(payload);
     }
   });
 }
+
+function storeCvBase64(base64) {
+  try {
+    sessionStorage.setItem('linkedinCvBase64', base64);
+    console.log("PDF base64 stocké dans sessionStorage");
+  } catch (error) {
+    console.error("Erreur lors du stockage du PDF base64 :", error);
+  }
+}
+
 
 // Initialisation du listener à l'exécution du script
 setupExtensionListener();

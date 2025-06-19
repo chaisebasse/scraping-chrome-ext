@@ -38,6 +38,13 @@
       ],
       "js": ["scripts/Insert/postSubmitRedirect.js"],
       "run_at": "document_idle"
+    },
+    {
+      "matches": [
+        "http://s-tom-1:90/MeilleurPilotage/*"
+      ],
+      "js": ["scripts/Insert/contentBridge.js"],
+      "run_at": "document_idle"
     }
   ],
 
@@ -65,7 +72,8 @@
       "resources": [
         "scripts/common/HighlightHelper.js",
         "scripts/common/ScrollHelper.js",
-        "scripts/common/Parameter.js"
+        "scripts/common/Parameter.js",
+        "scripts/MP/jobScraper.js"
       ],
       "matches": ["<all_urls>"]
     }

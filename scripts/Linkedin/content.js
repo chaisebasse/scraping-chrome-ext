@@ -73,9 +73,9 @@ async function extractProfileDataWithAttachments() {
  * @returns {{firstName: string|null, lastName: string|null}}
  */
 function extractNameFromNoteButton() {
-  const noteButton = document.querySelector("#note-list-title + button[title^='Ajouter une note sur']");
+  const noteButton = document.querySelector("#note-list-title + button[title^='Ajouter une note sur']") || document.querySelector("#note-list-title + button[title^='Add Note about']");
   const title = noteButton?.getAttribute("title");
-  const match = title?.match(/^Ajouter une note sur (.+)$/);
+  const match = title?.match(/^Ajouter une note sur (.+)$/) || title?.match(/^Add Note about (.+)$/);
   if (!match) return { firstName: null, lastName: null };
 
   const [firstName, ...lastParts] = match[1].trim().split(" ");
