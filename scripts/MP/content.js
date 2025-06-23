@@ -83,54 +83,11 @@ if (!window.scraperListenerRegistered) {
   chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     if (message.action === "runScraper") {
       runScraper();
-      sendResponse({ status: 'success' });
+      sendResponse({ status: 'ok' });
       return true; // Indique une réponse asynchrone
     }
   });
 }
-
-// === HIGHLIGHTING ================================================
-
-function prepareHighlighting(HighlightHelper, columnIndices, headersOfInterest) {
-  const {
-    injectHighlightStyles,
-    clearAllHighlights,
-    highlightByHeaderLabel,
-    applyColumnHighlight,
-    fadeOutHighlightByHeaderLabel,
-    fadeOutColumnHighlight,
-  } = HighlightHelper;
-
-  injectHighlightStyles();
-
-  const indices = Array.isArray(columnIndices) ? columnIndices : [columnIndices];
-  indices.forEach(applyColumnHighlight);
-
-  highlightByHeaderLabel(headersOfInterest);
-
-  return {
-    clearAllHighlights,
-    fadeOutHighlightByHeaderLabel,
-    fadeOutColumnHighlight,
-  };
-}
-
-// === SCROLLING ===================================================
-
-function getScrollContainerAndHelpers(ScrollHelper, table) {
-  const {
-    getScrollableParent,
-    scrollToTop,
-    scrollAndCollectRows,
-  } = ScrollHelper;
-
-  return {
-    scrollContainer: getScrollableParent(table) || window,
-    scrollToTop,
-    scrollAndCollectRows,
-  };
-}
-
 // === UTILS =======================================================
 
 /**
@@ -201,6 +158,48 @@ function getRequiredColumnIndices(thead) {
   const colIdIndex = getColumnIndexByTriCode(thead, 'ID_EMPL');
 
   return { colRechercheIndex, colIdIndex };
+}
+
+// === HIGHLIGHTING ================================================
+
+function prepareHighlighting(HighlightHelper, columnIndices, headersOfInterest) {
+  const {
+    injectHighlightStyles,
+    clearAllHighlights,
+    highlightByHeaderLabel,
+    applyColumnHighlight,
+    fadeOutHighlightByHeaderLabel,
+    fadeOutColumnHighlight,
+  } = HighlightHelper;
+
+  injectHighlightStyles();
+
+  const indices = Array.isArray(columnIndices) ? columnIndices : [columnIndices];
+  indices.forEach(applyColumnHighlight);
+
+  highlightByHeaderLabel(headersOfInterest);
+
+  return {
+    clearAllHighlights,
+    fadeOutHighlightByHeaderLabel,
+    fadeOutColumnHighlight,
+  };
+}
+
+// === SCROLLING ===================================================
+
+function getScrollContainerAndHelpers(ScrollHelper, table) {
+  const {
+    getScrollableParent,
+    scrollToTop,
+    scrollAndCollectRows,
+  } = ScrollHelper;
+
+  return {
+    scrollContainer: getScrollableParent(table) || window,
+    scrollToTop,
+    scrollAndCollectRows,
+  };
 }
 
 // === EXPORT ======================================================

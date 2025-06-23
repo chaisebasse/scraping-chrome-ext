@@ -1,7 +1,6 @@
 <!DOCTYPE html>
 <html>
   <head>
-    <meta charset="UTF-8">
     <title>Scraper Settings</title>
     <style>
       body {
@@ -43,11 +42,6 @@
         background-color: #45a049;
       }
 
-      select {
-        height: 30px;
-        width: 100%;
-      }
-
       .page {
         display: none;
       }
@@ -61,23 +55,15 @@
     <div id="mainPage" class="page active">
       <button id="runBtn">Run MP Scraper</button>
   
-      <button id="choixRecrBtn">Run LinkedIn Scraper</button>
+      <button id="runLinkedInBtn">Run LinkedIn Scraper</button>
       <button id="showErrorsBtn">Voir erreurs</button>
     </div>
 
-    <div id="choixRecherche" class="page">
-      <select id="recrAssoc">Recherche Associée</select>
-  
-      <button id="runLinkedInBtn">Démarrer récolte données</button>
-      <button id="refreshJobIdsBtn">Vous ne trouvez pas votre recherche ?</button>
-    </div>
-
-    <div id="pageErreurs" class="page">
+    <div id="errorPage" class="page">
       <h3>Erreurs de scraping :</h3>
       <div id="errorList"></div>
       <button id="backBtn">Retour</button>
     </div>
-
     <script src="./scripts/popup.js"></script>
   </body>
 </html>

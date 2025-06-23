@@ -1,4 +1,4 @@
-// === Extraction du numéro interne et lancement de l’upload du CV ===
+// === Extraction du numéro interne et envoi du CV ===
 (function () {
   if (!wasFormJustSubmitted()) return;
 
@@ -7,14 +7,14 @@
     console.log("fk extrait :", fk);
     uploadCandidateCv(fk);
   } else {
-    console.warn("Échec de l’extraction du numéro interne.");
+    console.warn("Échec de l'extraction du numéro interne.");
   }
 })();
 
 /**
- * Vérifie si le formulaire a été soumis juste avant (flag en sessionStorage).
- * Supprime ensuite ce flag pour éviter les doublons.
- * @returns {boolean} true si formulaire soumis récemment, sinon false
+ * Vérifie si le formulaire vient d’être soumis (via sessionStorage).
+ *
+ * @returns {boolean} `true` si le formulaire vient juste d’être soumis, sinon `false`.
  */
 function wasFormJustSubmitted() {
   const flag = sessionStorage.getItem("justSubmittedCandidateForm");
@@ -26,9 +26,9 @@ function wasFormJustSubmitted() {
 }
 
 /**
- * Extrait le numéro interne (fk) depuis la page, à partir du conteneur #FORM_PRIN.
- * Cherche le texte "Numéro interne: <nombre>" dans le premier div enfant.
- * @returns {string|null} Le numéro interne extrait ou null si non trouvé
+ * Extrait le numéro interne (fk) affiché sur la page après soumission du formulaire.
+ *
+ * @returns {string|null} Le numéro interne extrait, ou `null` si non trouvé.
  */
 function extractFk() {
   const container = document.querySelector("#FORM_PRIN");
@@ -38,12 +38,12 @@ function extractFk() {
   return match?.[1] || null;
 }
 
-// === Logique principale pour l’envoi du CV ===
+// === Logique principale d'upload ===
 
 /**
- * Télécharge le CV LinkedIn depuis sessionStorage, puis l’envoie au serveur MP avec la fk.
- * Gère les erreurs de façon sécurisée.
- * @param {string} fk Le numéro interne à associer au CV
+ * Récupère le CV LinkedIn depuis le `sessionStorage` et l'envoie à MeilleurPilotage.
+ *
+ * @param {string} fk - Le numéro interne du candidat (foreign key).
  */
 async function uploadCandidateCv(fk) {
   const cvBlob = await getLinkedinCv();
@@ -61,10 +61,11 @@ async function uploadCandidateCv(fk) {
 // === Fonctions utilitaires ===
 
 /**
- * Convertit une chaîne base64 en Blob (par défaut PDF).
- * @param {string} base64 Le contenu encodé en base64
- * @param {string} [contentType='application/pdf'] Le type MIME du Blob
- * @returns {Blob} Le Blob résultant
+ * Convertit une chaîne base64 en objet Blob.
+ *
+ * @param {string} base64 - Données encodées en base64.
+ * @param {string} [contentType='application/pdf'] - Le type MIME du fichier.
+ * @returns {Blob} Un objet Blob contenant le fichier décodé.
  */
 function base64ToBlob(base64, contentType = 'application/pdf') {
   const byteCharacters = atob(base64);
@@ -77,10 +78,10 @@ function base64ToBlob(base64, contentType = 'application/pdf') {
 }
 
 /**
- * Récupère le CV LinkedIn stocké en base64 dans sessionStorage.
- * Attends jusqu’à 15s (par défaut) que le base64 soit disponible.
- * @param {number} [timeout=15000] Timeout en millisecondes
- * @returns {Promise<Blob>} Résout avec un Blob PDF ou rejette en cas de timeout
+ * Attend l’apparition du CV encodé en base64 dans le `sessionStorage`.
+ *
+ * @param {number} [timeout=15000] - Temps maximal d’attente en millisecondes.
+ * @returns {Promise<Blob>} Une promesse qui se résout avec le Blob du CV.
  */
 function getLinkedinCv(timeout = 5000) {
   const deadline = Date.now() + timeout;
@@ -98,10 +99,11 @@ function getLinkedinCv(timeout = 5000) {
 }
 
 /**
- * Essaye de convertir le base64 en Blob et appelle resolve ou reject selon le résultat.
- * @param {string} base64
- * @param {function} resolve
- * @param {function} reject
+ * Tente de convertir le base64 en Blob et de le retourner via `resolve`, sinon rejette.
+ *
+ * @param {string} base64 - Données encodées en base64.
+ * @param {Function} resolve - Fonction à appeler en cas de succès.
+ * @param {Function} reject - Fonction à appeler en cas d’erreur.
  */
 function resolveSafeBlob(base64, resolve, reject) {
   try {
@@ -113,10 +115,11 @@ function resolveSafeBlob(base64, resolve, reject) {
 }
 
 /**
- * Envoie le PDF au serveur MP via un POST multipart/form-data.
- * @param {Blob} pdfBlob Le Blob PDF à envoyer
- * @param {string} fk Le numéro interne lié au CV
- * @returns {Promise<string|null>} Résout avec la clé primaire (pk) extraite ou null
+ * Envoie le fichier PDF au serveur MP via un POST multipart/form-data.
+ *
+ * @param {Blob} pdfBlob - Le fichier PDF à envoyer.
+ * @param {string} fk - Le numéro interne du candidat (foreign key).
+ * @returns {Promise<string|null>} Le `pk` renvoyé par le serveur ou `null`.
  */
 async function uploadPdfToMP(pdfBlob, fk) {
   const formData = buildCvFormData(pdfBlob, fk);
@@ -130,10 +133,11 @@ async function uploadPdfToMP(pdfBlob, fk) {
 }
 
 /**
- * Construit les données du formulaire multipart/form-data pour l’upload.
- * @param {Blob} pdfBlob Le Blob PDF
- * @param {string} fk Le numéro interne
- * @returns {FormData} Le FormData prêt à être envoyé
+ * Construit l’objet `FormData` utilisé pour l’upload du CV.
+ *
+ * @param {Blob} pdfBlob - Le fichier PDF à inclure.
+ * @param {string} fk - Le numéro interne du candidat.
+ * @returns {FormData} L’objet FormData prêt à être envoyé.
  */
 function buildCvFormData(pdfBlob, fk) {
   const formData = new FormData();
@@ -146,10 +150,10 @@ function buildCvFormData(pdfBlob, fk) {
 }
 
 /**
- * Extrait la clé primaire (pk) depuis la réponse HTML du serveur MP.
- * Cherche dans un input nommé "pk".
- * @param {string} html Le contenu HTML en string
- * @returns {string|null} La valeur de pk ou null si non trouvée
+ * Extrait la valeur du champ `pk` depuis la réponse HTML retournée par le serveur.
+ *
+ * @param {string} html - Le HTML complet de la réponse.
+ * @returns {string|null} La valeur du champ `pk`, ou `null` si non trouvée.
  */
 function extractPkFromHtml(html) {
   const match = html.match(/<input[^>]+name="pk"[^>]+value="(\d+)"/);
