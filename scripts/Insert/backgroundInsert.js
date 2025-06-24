@@ -1,6 +1,6 @@
 let pendingCandidate = null;
 let capturedCvUrl = null;
-let isHandlingCv = false;
+let hasCapturedCv = false;
 
 /**
  * Initialise les écouteurs pour :
@@ -8,12 +8,19 @@ let isHandlingCv = false;
  * - Interception des requêtes réseau pour détecter les téléchargements de CV
  */
 export function handleInsertToMP() {
-  chrome.runtime.onMessage.addListener(handleCandidateMessage);
-  chrome.webRequest.onBeforeRequest.addListener(
-    handleWebRequest,
-    { urls: ["<all_urls>"] },
-    ["requestBody"]
-  );
+  chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
+    if (message.action === "send_candidate_data") {
+      processCandidateMessage(message.scrapedData)
+        .then(() => {
+          sendResponse({ status: "success", message: "Candidate processed" });
+        })
+        .catch((error) => {
+          console.error("Error processing candidate:", error);
+          sendResponse({ status: "error", message: error.message });
+        });
+      return true;
+    }
+  });
 }
 
 /**
@@ -24,23 +31,38 @@ export function handleInsertToMP() {
  * @param {Function} sendResponse - Fonction permettant de répondre au message.
  * @returns {boolean|undefined} - Retourne true pour maintenir le port ouvert si attente de CV.
  */
-async function handleCandidateMessage(message, sender, sendResponse) {
-  if (message.action !== "send_candidate_data") {
-    sendResponse({ status: "error", message: `action inconnue ${message.action}` });
-    return;
-  }
+async function processCandidateMessage(scrapedData) {
+  pendingCandidate = scrapedData;
 
-  pendingCandidate = message.scrapedData;
-
-  if (capturedCvUrl) {
+  if (pendingCandidate.attachmentCount > 0) {
+    chrome.webRequest.onBeforeRequest.addListener(
+      handleWebRequest,
+      { urls: ["https://www.linkedin.com/dms/prv/document/media*"] },
+      ["requestBody"]
+    );
+    await waitForCvInterception(); // This can be long
     await handleCvAndSendToMP();
-    sendResponse({ status: "success" });
-    return;
   }
 
-  sendResponse({ status: "success", message: "Waiting for CV URL..." });
-  
-  return true;
+  await openOrSendToMp(pendingCandidate);
+  resetState();
+}
+
+function waitForCvInterception(timeoutMs = 15000) {
+  return new Promise((resolve) => {
+    const timeout = setTimeout(() => {
+      console.warn("Timeout waiting for CV interception");
+      resolve();
+    }, timeoutMs);
+
+    const checkInterval = setInterval(() => {
+      if (hasCapturedCv && capturedCvUrl) {
+        clearTimeout(timeout);
+        clearInterval(checkInterval);
+        resolve();
+      }
+    }, 100);
+  });
 }
 
 /**
@@ -50,10 +72,9 @@ async function handleCandidateMessage(message, sender, sendResponse) {
  */
 function handleWebRequest(details) {
   if (shouldCapture(details.url)) {
-    isHandlingCv = true;
     capturedCvUrl = details.url;
+    hasCapturedCv = true;
     console.log("CV URL intercepted:", capturedCvUrl);
-    processCvIfCandidatePending();
   }
 }
 
@@ -66,42 +87,33 @@ function handleWebRequest(details) {
 function shouldCapture(url) {
   return (
     url.includes("linkedin.com/dms/prv/document/media") &&
-    url.includes("recruiter-candidate-document-pdf-analyzed") &&
-    !isHandlingCv
+    url.includes("recruiter-candidate-document-pdf-analyzed")
   );
-}
-
-/**
- * Lance le traitement du CV s’il existe un candidat en attente.
- */
-async function processCvIfCandidatePending() {
-  if (!pendingCandidate) return;
-  await handleCvAndSendToMP();
 }
 
 /**
  * Télécharge le PDF, le convertit en base64, l’ajoute au candidat, puis l’envoie à MP.
  */
 async function handleCvAndSendToMP() {
-  const binaryCv = await fetchPdfAsUint8Array(capturedCvUrl);
-  if (!binaryCv || !pendingCandidate) return;
+  if (!pendingCandidate) return;
 
-  const base64 = uint8ArrayToBase64(binaryCv);
-  if (!base64) return;
-
-  pendingCandidate.cvBase64 = base64;
-  await openOrSendToMp(pendingCandidate);
-
-  resetState();
+  if (capturedCvUrl) {
+    const binaryCv = await fetchPdfAsUint8Array(capturedCvUrl);
+    const base64 = uint8ArrayToBase64(binaryCv);
+    if (base64) {
+      pendingCandidate.cvBase64 = base64;
+    }
+  }
 }
 
 /**
  * Réinitialise l’état interne (CV intercepté et candidat en cours).
  */
 function resetState() {
+  chrome.webRequest.onBeforeRequest.removeListener(handleWebRequest);
   capturedCvUrl = null;
+  hasCapturedCv = false;
   pendingCandidate = null;
-  isHandlingCv = false;
 }
 
 /**

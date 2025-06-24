@@ -6,7 +6,7 @@
 function getFormInputMapping() {
   return {
     lastName: "MP:NOM",
-    name: "MP:PREN",
+    firstName: "MP:PREN",
     phone: "MP:TELE",
     email: "MP:MAIL",
     // publicProfileUrl: "MP:COMM_CV",
@@ -42,15 +42,15 @@ function fillFormFields(scrapedData) {
 
   const testValues = {
     lastName: "TestNom",
-    name: "TestPrenom",
+    firstName: "TestPrenom",
     phone: "0600000000",
     email: "test@example.com",
     // publicProfileUrl: "https://linkedin.com/in/test",
   };
 
   for (const [dataKey, inputName] of Object.entries(mapping)) {
-    populateInput(inputName, testValues[dataKey]);
-    // populateInput(inputName, scrapedData[dataKey]);
+    // populateInput(inputName, testValues[dataKey]);
+    populateInput(inputName, scrapedData[dataKey]);
   }
 }
 

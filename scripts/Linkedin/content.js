@@ -94,7 +94,7 @@ async function extractProfileDataWithAttachments() {
   const publicProfileUrl = document.querySelector("a[data-test-public-profile-link]")?.href || null;
 
   const scrapedData = {
-    name: firstName,
+    firstName,
     lastName,
     email,
     phone,
@@ -162,11 +162,27 @@ async function clickAttachmentsTab(tab, count) {
  * @param {Object} scrapedData
  */
 function sendScrapedDataToBackground(scrapedData) {
-  chrome.runtime.sendMessage({
-    action: "send_candidate_data",
-    scrapedData,
-    deferInsert: true
-  }, handleResponse);
+  return new Promise((resolve, reject) => {
+    chrome.runtime.sendMessage(
+      {
+        action: "send_candidate_data",
+        scrapedData,
+        deferInsert: true
+      },
+      (response) => {
+        if (chrome.runtime.lastError) {
+          console.error("Message failed:", chrome.runtime.lastError.message);
+          reject(chrome.runtime.lastError);
+        } else if (response?.status === "success") {
+          console.log("[content] Candidat envoyé avec succès :", response.message);
+          resolve(response);
+        } else {
+          console.error("[content] Échec de l'envoi :", response?.message);
+          reject(new Error(response?.message || "Unknown error"));
+        }
+      }
+    );
+  });
 }
 
 /**
@@ -192,13 +208,20 @@ async function scrapeLinkedInProfile() {
   if (!isOnLinkedInProfilePage()) return;
   console.log("[LinkedIn Recruiter] Scraper lancé");
 
+  const attachmentsTab = document.querySelector('[data-live-test-profile-attachments-tab]');
+  if (!attachmentsTab) {
+    console.warn("[LinkedIn Recruiter] Tab not found.");
+    return;
+  }
+  
   try {
     const scrapedData = await extractProfileDataWithAttachments();
-    if (scrapedData.name && scrapedData.lastName) {
-      sendScrapedDataToBackground(scrapedData);
+    scrapedData.attachmentCount = extractAttachmentCount(attachmentsTab);
+    if (scrapedData.firstName && scrapedData.lastName) {
+      await sendScrapedDataToBackground(scrapedData);
     }
   } catch (error) {
-    console.error("[LinkedIn Recruiter] Échec du scraping :", error);
+    console.error("[LinkedIn Recruiter] Échec du scraping :", error.message || error);
   }
 
   return true;
@@ -224,13 +247,16 @@ async function scrapeListOfProfiles() {
     try {
       await waitForProfileOpen();
       await waitForElement('[data-live-test-profile-attachments-tab]');
-      await waitForElement()
+      await waitForElement('[data-live-test-row-lockup-full-name]');
+
       await scrapeLinkedInProfile();
+      await closeProfile();
+
+      console.log(`[LinkedIn Recruiter] Profil ${i + 1} traité.`);
     } catch (e) {
       console.warn(`[LinkedIn Recruiter] Erreur pour le candidat ${i + 1} :`, e);
     }
 
-    await closeProfile();
     await delay(getRandomInRange(500, 3100));
   }
 
