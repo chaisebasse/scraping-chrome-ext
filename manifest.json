@@ -36,7 +36,7 @@
         "http://s-tom-1:90/MeilleurPilotage/servlet/Gestion*",
         "http://s-tom-1:90/MeilleurPilotage/servlet/UG*"
       ],
-      "js": ["scripts/Insert/postSubmitRedirect.js"],
+      "js": ["scripts/Redirect/postSubmitRedirect.js"],
       "run_at": "document_idle"
     },
     {

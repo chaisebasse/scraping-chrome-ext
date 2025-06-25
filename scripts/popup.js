@@ -147,7 +147,7 @@ document.addEventListener("DOMContentLoaded", () => {
   });
 
   const mainPage = document.getElementById("mainPage");
-  const errorPage = document.getElementById("errorPage");
+  const errorPage = document.getElementById("pageErreurs");
   const showErrorsBtn = document.getElementById("showErrorsBtn");
   const backBtn = document.getElementById("backBtn");
   
@@ -157,10 +157,57 @@ document.addEventListener("DOMContentLoaded", () => {
   }
 
   showErrorsBtn.addEventListener("click", () => {
+    chrome.runtime.sendMessage({ type: "getInsertionErrors" }, (errors) => {
+      if (chrome.runtime.lastError) {
+        console.warn("No response from background:", chrome.runtime.lastError.message);
+        showErrorsInPopup([]);
+      } else {
+        showErrorsInPopup(errors || []); // Safe fallback
+      }
+    });
     showPage(errorPage, mainPage);
   });
 
   backBtn.addEventListener("click", () => {
     showPage(mainPage, errorPage);
   });
+
+  function showErrorsInPopup(errors) {
+    const errorList = document.getElementById("errorList");
+    errorList.innerHTML = "";
+
+    if (!errors) return;
+
+    const grouped = {
+      duplicate: [],
+      mandatoryMissing: [],
+      optionalMissing: []
+    };
+
+    for (const err of errors) {
+      grouped[err.type].push(err);
+    }
+
+    for (const [type, list] of Object.entries(grouped)) {
+      if (list.length === 0) continue;
+
+      const title = {
+        duplicate: "Candidats déjà existants :",
+        mandatoryMissing: "Données impératives manquantes :",
+        optionalMissing: "Données facultatives manquantes :"
+      }[type];
+
+      const groupDiv = document.createElement("div");
+      groupDiv.innerHTML = `<strong>${title}</strong><ul style="margin-top: 4px;"></ul>`;
+      const ul = groupDiv.querySelector("ul");
+
+      for (const { name, reason } of list) {
+        const li = document.createElement("li");
+        li.textContent = `${name} - ${reason}`;
+        ul.appendChild(li);
+      }
+
+      errorList.appendChild(groupDiv);
+    }
+  }
 });

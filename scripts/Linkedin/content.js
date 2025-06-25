@@ -116,7 +116,10 @@ function extractNameFromNoteButton() {
   const title = noteButton?.getAttribute("title");
   const match = title?.match(/^Ajouter une note sur (.+)$/) ||
                 title?.match(/^Add Note about (.+)$/);
-  if (!match) return { firstName: null, lastName: null };
+  if (!match) {
+    console.error("ATTENTION : Prénom et nom non trouvés !");
+    return { firstName: null, lastName: null };
+  }
 
   const [firstName, ...lastParts] = match[1].trim().split(" ");
   return { firstName, lastName: lastParts.join(" ") };
@@ -218,7 +221,7 @@ async function scrapeLinkedInProfile() {
     const scrapedData = await extractProfileDataWithAttachments();
     scrapedData.attachmentCount = extractAttachmentCount(attachmentsTab);
     if (scrapedData.firstName && scrapedData.lastName) {
-      await sendScrapedDataToBackground(scrapedData);
+      return await sendScrapedDataToBackground(scrapedData);
     }
   } catch (error) {
     console.error("[LinkedIn Recruiter] Échec du scraping :", error.message || error);
@@ -249,7 +252,12 @@ async function scrapeListOfProfiles() {
       await waitForElement('[data-live-test-profile-attachments-tab]');
       await waitForElement('[data-live-test-row-lockup-full-name]');
 
-      await scrapeLinkedInProfile();
+      const result = await scrapeLinkedInProfile();
+      if (result?.status === 'success') {
+        console.log(`[LinkedIn Recruiter] Candidat ${i + 1} envoyé avec succès`);
+      } else {
+        console.warn(`[LinkedIn Recruiter] Candidat ${i + 1} non envoyé correctement`);
+      }
       await closeProfile();
 
       console.log(`[LinkedIn Recruiter] Profil ${i + 1} traité.`);

@@ -1,6 +1,8 @@
 import { handleInsertToMP } from './Insert/backgroundInsert.js';
+import { handleErrors } from './Redirect/backgroundRedirect.js';
 
 handleInsertToMP();
+handleErrors();
 
 // Événement déclenché lors de l'installation ou la mise à jour de l'extension
 chrome.runtime.onInstalled.addListener(() => {

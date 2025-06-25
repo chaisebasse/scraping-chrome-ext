@@ -2,14 +2,76 @@
 (function () {
   if (!wasFormJustSubmitted()) return;
 
-  const fk = extractFk();
-  if (fk) {
-    console.log("fk extrait :", fk);
-    uploadCandidateCv(fk);
-  } else {
-    console.warn("Échec de l'extraction du numéro interne.");
+  // if (sessionStorage.getItem("linkedinCvBase64")) { // TODO: Revoir condition (au cas où pas encore arrivé)
+    const fk = extractFk();
+    if (fk) {
+      console.log("fk extrait :", fk);
+      uploadCandidateCv(fk);
+    } else if (!fk) {
+      console.warn("Échec de l'extraction du numéro interne.");
+    }
+  // } else {
+  //   console.warn("pas de cv");
+  // }
+
+  const insertionErrors = getInsertionErrors();
+  if (insertionErrors.length > 0) {
+    chrome.runtime.sendMessage({
+      type: "addInsertionErrors",
+      payload: insertionErrors
+    });
   }
 })();
+
+function getInsertionErrors() {
+  const errors = [];
+
+  const mailErrorText = document.querySelector("mp\\:err_mail")?.innerText.trim() || "";
+  const lastNameErrorText = document.querySelector("mp\\:err_nom")?.innerText.trim() || "";
+  const firstNameErrorText = document.querySelector("mp\\:err_pren")?.innerText.trim() || "";
+
+  const fullName = getFormName();
+
+  if (mailErrorText.includes("a déjà été créé")) {
+    errors.push({
+      type: "duplicate",
+      name: fullName,
+      reason: "Même mail ou nom déjà utilisé."
+    });
+  }
+
+  if (firstNameErrorText.length > 0 || lastNameErrorText.length > 0) {
+    errors.push({
+      type: "mandatoryMissing",
+      name: fullName,
+      reason: "Prénom ou nom manquant."
+    });
+  }
+
+  return errors;
+}
+
+function getFormName() {
+  const titleText = document.title;
+  const prefix = "Candidat";
+  const index = titleText.indexOf(prefix);
+
+  if (index === -1) return "Nom inconnu";
+
+  const namePart = titleText.slice(index + prefix.length).trim();
+
+  if (!namePart) return "Nom inconnu";
+
+  const parts = namePart.split(/\s+/);
+
+  if (parts.length < 2) return namePart;
+
+  const nom = parts.pop();
+  const prenom = parts.join(" ");
+
+  return `${prenom} ${nom}`.trim();
+}
+
 
 /**
  * Vérifie si le formulaire vient d’être soumis (via sessionStorage).
