@@ -1,3 +1,8 @@
+/**
+ * @file background.js
+ * @description Main background script, acts as a router on extension icon click.
+ */
+
 import { handleInsertToMP } from './Insert/backgroundInsert.js';
 import { handleErrors } from './Redirect/backgroundRedirect.js';
 
@@ -15,12 +20,4 @@ chrome.runtime.onInstalled.addListener(() => {
       runAt: "document_idle" // Moment d'injection : une fois que la page est "presque" totalement chargée
     }
   ]);
-});
-
-// Événement déclenché lorsque l'utilisateur clique sur l'icône de l'extension
-chrome.action.onClicked.addListener((tab) => {
-  // Envoie un message au script de contenu (déjà injecté) pour lancer le scraping
-  if (tab.id) {
-    chrome.tabs.sendMessage(tab.id, { action: "runScraper" });
-  }
 });

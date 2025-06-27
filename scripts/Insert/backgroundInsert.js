@@ -3,6 +3,20 @@ let capturedCvUrl = null;
 let hasCapturedCv = false;
 
 /**
+ * Configuration for sites that support CV interception.
+ * The key is the 'source' name sent from the content script.
+ * The 'urlPattern' is used by the webRequest listener.
+ */
+const CV_INTERCEPTION_CONFIG = {
+  linkedin: {
+    urlPattern: "https://www.linkedin.com/dms/prv/document/media*"
+  },
+  hellowork: {
+    urlPattern: "https://api-hwrecruteur.hellowork.com/api/hw-ats-public/api/cache/document/marvin/pdf/*"
+  }
+};
+
+/**
  * Initialise les écouteurs pour :
  * - Réception de messages contenant les données candidat
  * - Interception des requêtes réseau pour détecter les téléchargements de CV
@@ -26,21 +40,21 @@ export function handleInsertToMP() {
 /**
  * Gère la réception des données d’un candidat depuis un content script.
  * 
- * @param {Object} message - Le message reçu contenant les données du candidat.
- * @param {Object} sender - Informations sur l’expéditeur du message.
- * @param {Function} sendResponse - Fonction permettant de répondre au message.
- * @returns {boolean|undefined} - Retourne true pour maintenir le port ouvert si attente de CV.
+ * @param {Object} scrapedData - Les données candidat
  */
 async function processCandidateMessage(scrapedData) {
   pendingCandidate = scrapedData;
+  const source = pendingCandidate.source;
+  const interceptionConfig = CV_INTERCEPTION_CONFIG[source];
 
-  if (pendingCandidate.attachmentCount > 0) {
+  if (interceptionConfig && pendingCandidate.attachmentCount > 0) {
+    console.log(`[BackgroundInsert] Candidate from '${source}' with attachments detected. Setting up CV interceptor.`);
     chrome.webRequest.onBeforeRequest.addListener(
       handleWebRequest,
-      { urls: ["https://www.linkedin.com/dms/prv/document/media*"] },
+      { urls: [interceptionConfig.urlPattern] },
       ["requestBody"]
     );
-    await waitForCvInterception(); // This can be long
+    await waitForCvInterception();
     await handleCvAndSendToMP();
   }
 
@@ -57,6 +71,9 @@ function waitForCvInterception(timeoutMs = 15000) {
 
     const checkInterval = setInterval(() => {
       if (hasCapturedCv && capturedCvUrl) {
+        console.error("hasCapturedCv :", hasCapturedCv);
+        console.error("capturedCvUrl :", capturedCvUrl);
+
         clearTimeout(timeout);
         clearInterval(checkInterval);
         resolve();
@@ -71,24 +88,9 @@ function waitForCvInterception(timeoutMs = 15000) {
  * @param {Object} details - Détails de la requête interceptée.
  */
 function handleWebRequest(details) {
-  if (shouldCapture(details.url)) {
-    capturedCvUrl = details.url;
-    hasCapturedCv = true;
-    console.log("CV URL intercepted:", capturedCvUrl);
-  }
-}
-
-/**
- * Vérifie si l’URL correspond à un document PDF de LinkedIn Recruiter.
- * 
- * @param {string} url - L’URL à analyser.
- * @returns {boolean} - True si l’URL correspond à un CV PDF à capturer.
- */
-function shouldCapture(url) {
-  return (
-    url.includes("linkedin.com/dms/prv/document/media") &&
-    url.includes("recruiter-candidate-document-pdf-analyzed")
-  );
+  capturedCvUrl = details.url;
+  hasCapturedCv = true;
+  console.log(`CV URL intercepted for source '${pendingCandidate?.source}':`, capturedCvUrl);
 }
 
 /**
@@ -110,7 +112,9 @@ async function handleCvAndSendToMP() {
  * Réinitialise l’état interne (CV intercepté et candidat en cours).
  */
 function resetState() {
-  chrome.webRequest.onBeforeRequest.removeListener(handleWebRequest);
+  if (chrome.webRequest.onBeforeRequest.hasListener(handleWebRequest)) {
+    chrome.webRequest.onBeforeRequest.removeListener(handleWebRequest);
+  }
   capturedCvUrl = null;
   hasCapturedCv = false;
   pendingCandidate = null;

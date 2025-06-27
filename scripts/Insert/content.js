@@ -147,7 +147,7 @@ function setupExtensionListener() {
 
 function storeCvBase64(base64) {
   try {
-    sessionStorage.setItem('linkedinCvBase64', base64);
+    sessionStorage.setItem('scrapedCvBase64', base64);
     console.log("PDF base64 stocké dans sessionStorage");
   } catch (error) {
     console.error("Erreur lors du stockage du PDF base64 :", error);

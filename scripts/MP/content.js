@@ -76,13 +76,13 @@ if (!window.parameterHandlerReady) {
 
 /**
  * Enregistre un listener global pour les messages runtime.
- * Écoute l'action "runScraper" et lance la fonction runScraper avec l'index de colonne stocké.
+ * Écoute l'action "runMPScraper" et lance la fonction runMPScraper avec l'index de colonne stocké.
  */
-if (!window.scraperListenerRegistered) {
-  window.scraperListenerRegistered = true;
+if (!window.linkedinScraperListenerRegistered) {
+  window.linkedinScraperListenerRegistered = true;
   chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
-    if (message.action === "runScraper") {
-      runScraper();
+    if (message.action === "runMPScraper") {
+      runMPScraper();
       sendResponse({ status: 'ok' });
       return true; // Indique une réponse asynchrone
     }
@@ -238,7 +238,7 @@ function makeProcessRowFn({ rowNumberColIndex, colIdIndex, colRechercheIndex, da
 
 // === MAIN SCRAPER ================================================
 
-async function runScraper() {
+async function runMPScraper() {
   const prepared = await prepareScraper();
   if (!prepared) return;
   const { parameterHandler, HighlightHelper, ScrollHelper } = prepared;

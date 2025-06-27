@@ -1,5 +1,5 @@
-if (!window.scraperListenerRegistered) {
-  window.scraperListenerRegistered = true;
+if (!window.linkedinScraperListenerRegistered) {
+  window.linkedinScraperListenerRegistered = true;
   chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     if (message.action === "runLinkedinScraper") {
       routeScraperBasedOnPage();
@@ -40,23 +40,6 @@ function createObserver(selector, resolve) {
 }
 
 /**
- * Crée un observer avec un timeout pour attendre un élément.
- * @param {string} selector - Sélecteur CSS de l’élément à attendre.
- * @param {number} timeout - Durée maximale d’attente en ms.
- * @param {Function} resolve - Fonction appelée si l’élément est trouvé.
- * @param {Function} reject - Fonction appelée si le délai expire.
- * @returns {{observer: MutationObserver, timeoutId: number}}
- */
-function createTimeoutAndObserver(selector, timeout, resolve, reject) {
-  const observer = createObserver(selector, resolve);
-  const timeoutId = setTimeout(() => {
-    observer.disconnect();
-    reject(new Error(`Timeout: Élément ${selector} introuvable`));
-  }, timeout);
-  return { observer, timeoutId };
-}
-
-/**
  * Vérifie si la page actuelle est une fiche candidat LinkedIn Recruiter.
  * @returns {boolean}
  */
@@ -87,8 +70,9 @@ function delay(ms) {
  */
 async function extractProfileDataWithAttachments() {
   const { firstName, lastName } = extractNameFromNoteButton();
-  await openAttachmentsTab();
-
+  await openTab(document.querySelector('data-live-test-profile-index-tab'));
+  await openTab(document.querySelector('data-live-test-profile-attachments-tab'));
+  
   const email = document.querySelector("span[data-test-contact-email-address]")?.textContent.trim() || `${firstName}_${lastName}@linkedin.com`;
   const phone = document.querySelector("span[data-test-contact-phone][data-live-test-contact-phone]")?.textContent.trim() || null;
   const publicProfileUrl = document.querySelector("a[data-test-public-profile-link]")?.href || null;
@@ -98,7 +82,8 @@ async function extractProfileDataWithAttachments() {
     lastName,
     email,
     phone,
-    publicProfileUrl
+    publicProfileUrl,
+    source: 'linkedin'
   };
 
   console.log("[LinkedIn Recruiter] Données extraites :", scrapedData);
@@ -111,8 +96,8 @@ async function extractProfileDataWithAttachments() {
  * @returns {{firstName: string|null, lastName: string|null}}
  */
 function extractNameFromNoteButton() {
-  const noteButton = document.querySelector("#note-list-title + button[title^='Ajouter une note sur']") ||
-                     document.querySelector("#note-list-title + button[title^='Add Note about']");
+  const noteButton = document.querySelector("button[title^='Ajouter une note sur']") ||
+                     document.querySelector("button[title^='Add Note about']");
   const title = noteButton?.getAttribute("title");
   const match = title?.match(/^Ajouter une note sur (.+)$/) ||
                 title?.match(/^Add Note about (.+)$/);
@@ -128,8 +113,8 @@ function extractNameFromNoteButton() {
 /**
  * Ouvre l’onglet des pièces jointes et attend qu’elles soient chargées.
  */
-async function openAttachmentsTab() {
-  const attachmentsTab = document.querySelector('[data-live-test-profile-attachments-tab]');
+async function openTab(element) {
+  const attachmentsTab = element;
   if (!attachmentsTab) {
     console.warn("[LinkedIn Recruiter] Tab not found.");
     return;
@@ -399,8 +384,10 @@ function getRandomOffset(length) {
 
 function waitForElement(selector, timeout = 10000) {
   return new Promise((resolve, reject) => {
-    const existingElement = document.querySelectorAll(selector);
-    if (existingElement) return resolve(existingElement);
+    const existingElements = document.querySelectorAll(selector);
+    if (existingElements.length > 0) {
+      return resolve(existingElements);
+    }
 
     const observer = createObserver(selector, resolve);
     createTimeout(selector, timeout, observer, reject);

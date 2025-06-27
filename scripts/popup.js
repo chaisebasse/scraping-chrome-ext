@@ -1,6 +1,33 @@
 // Attend que le DOM soit complètement chargé avant d'exécuter le script
 document.addEventListener("DOMContentLoaded", () => {
-    async function getStoredJobIds() {
+    /**
+   * Updates the visibility of buttons in the popup based on the current tab's URL.
+   */
+  async function updateUserInterface() {
+    const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
+    const url = tab?.url || "";
+
+    // Get all buttons
+    const mpButton = document.getElementById("runMPBtn");
+    const hwButton = document.getElementById("runHwBtn");
+    const linkedInButton = document.getElementById("choixRecrBtn");
+
+    // Hide all by default
+    mpButton.style.display = "none";
+    hwButton.style.display = "none";
+    linkedInButton.style.display = "none";
+
+    // Show the relevant button
+    if (url.includes("s-tom-1:90/MeilleurPilotage")) {
+      mpButton.style.display = "block";
+    } else if (url.includes("app-recruteur.hellowork.com")) {
+      hwButton.style.display = "block";
+    } else if (url.includes("linkedin.com/talent/")) {
+      linkedInButton.style.display = "block";
+    }
+  }
+
+  async function getStoredJobIds() {
     const result = await chrome.storage.local.get(["jobIds"]);
     return result.jobIds || [];
   }
@@ -37,6 +64,7 @@ document.addEventListener("DOMContentLoaded", () => {
     });
   }
 
+  updateUserInterface();
   populateJobSelect();
   jobSelect.addEventListener("change", () => {
     setLastSelectedJobId(jobSelect.value);
@@ -105,7 +133,8 @@ document.addEventListener("DOMContentLoaded", () => {
   });
 
   // Récupération des éléments HTML de l'interface : champ de saisie et bouton d'exécution
-  const runMPButton = document.getElementById("runBtn");
+  const runMPButton = document.getElementById("runMPBtn");
+  const runHwButton = document.getElementById("runHwBtn");
   const choixRecrBtn = document.getElementById("choixRecrBtn");
   const runLinkedInButton = document.getElementById("runLinkedInBtn");
   const choixRecherche = document.getElementById("choixRecherche");
@@ -134,12 +163,17 @@ document.addEventListener("DOMContentLoaded", () => {
 
   // Bouton pour MP
   runMPButton.addEventListener("click", () => {
-    injectAndSend("scripts/MP/content.js", "runScraper");
+    injectAndSend("scripts/MP/content.js", "runMPScraper");
+  });
+
+  // Bouton pour Hellowork
+  runHwButton.addEventListener("click", () => {
+    injectAndSend("scripts/HelloWork/content.js", "runHwScraper");
   });
 
   // Bouton pour LinkedIn
   runLinkedInButton.addEventListener("click", () => {
-    injectAndSend("scripts/Linkedin/content.js", "runLinkedinScraper");
+    injectAndSend("scripts/LinkedIn/content.js", "runLinkedinScraper");
   });
 
   choixRecrBtn.addEventListener("click", () => {

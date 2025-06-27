@@ -108,7 +108,7 @@ function extractFk() {
  * @param {string} fk - Le numéro interne du candidat (foreign key).
  */
 async function uploadCandidateCv(fk) {
-  const cvBlob = await getLinkedinCv();
+  const cvBlob = await getScrapedCv();
   if (!cvBlob) {
     return;
   }
@@ -145,12 +145,12 @@ function base64ToBlob(base64, contentType = 'application/pdf') {
  * @param {number} [timeout=15000] - Temps maximal d’attente en millisecondes.
  * @returns {Promise<Blob>} Une promesse qui se résout avec le Blob du CV.
  */
-function getLinkedinCv(timeout = 5000) {
+function getScrapedCv(timeout = 5000) {
   const deadline = Date.now() + timeout;
 
   return new Promise((resolve, reject) => {
     const tryResolveCv = () => {
-      const base64 = sessionStorage.getItem("linkedinCvBase64");
+      const base64 = sessionStorage.getItem("scrapedCvBase64");
       if (base64) return resolveSafeBlob(base64, resolve, reject);
 
       if (Date.now() < deadline) setTimeout(tryResolveCv, 300);
