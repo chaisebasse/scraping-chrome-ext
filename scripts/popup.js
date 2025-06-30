@@ -144,7 +144,30 @@ document.addEventListener("DOMContentLoaded", () => {
     chrome.tabs.query({ active: true, currentWindow: true }, async ([tab]) => {
       if (!tab?.id) return;
 
+      // Check if the script is from the HelloWork folder and if we are on a Hellowork URL
+      const isHelloworkScraper = scriptPath.startsWith("scripts/HelloWork/");
+      const isHelloworkUrl = tab.url && tab.url.includes("app-recruteur.hellowork.com");
+
       try {
+        // If both conditions are true, reload the page before injecting the script
+        if (isHelloworkScraper && isHelloworkUrl) {
+          console.log(`[Popup] Reloading Hellowork tab ${tab.id} before scraping...`);
+          // 1. Reload the current tab
+          chrome.tabs.reload(tab.id);
+
+          // 2. Wait for the tab to finish loading after reload
+          await new Promise((resolve) => {
+            const listener = (tabId, changeInfo) => {
+              if (tabId === tab.id && changeInfo.status === "complete") {
+                chrome.tabs.onUpdated.removeListener(listener);
+                console.log(`[Popup] Hellowork tab ${tab.id} reloaded. Proceeding with script injection.`);
+                resolve();
+              }
+            };
+            chrome.tabs.onUpdated.addListener(listener);
+          });
+        }
+
         await chrome.scripting.executeScript({
           target: { tabId: tab.id },
           files: [scriptPath],

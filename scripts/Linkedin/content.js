@@ -70,13 +70,18 @@ function delay(ms) {
  */
 async function extractProfileDataWithAttachments() {
   const { firstName, lastName } = extractNameFromNoteButton();
-  await openTab(document.querySelector('data-live-test-profile-index-tab'));
-  await openTab(document.querySelector('data-live-test-profile-attachments-tab'));
+  const profileTab = await waitForElement('[data-live-test-profile-index-tab]');
+  const attachmentsTab = await waitForElement('[data-live-test-profile-attachments-tab]');
+    
+  await openTab(profileTab);
   
   const email = document.querySelector("span[data-test-contact-email-address]")?.textContent.trim() || `${firstName}_${lastName}@linkedin.com`;
   const phone = document.querySelector("span[data-test-contact-phone][data-live-test-contact-phone]")?.textContent.trim() || null;
   const publicProfileUrl = document.querySelector("a[data-test-public-profile-link]")?.href || null;
-
+  
+  await openTab(attachmentsTab);
+  console.log("[LinkedIn Recruiter] Onglet pièces jointes cliqué.");
+  
   const scrapedData = {
     firstName,
     lastName,
@@ -114,33 +119,39 @@ function extractNameFromNoteButton() {
  * Ouvre l’onglet des pièces jointes et attend qu’elles soient chargées.
  */
 async function openTab(element) {
-  const attachmentsTab = element;
-  if (!attachmentsTab) {
+  const tab = element;
+  if (!tab) {
     console.warn("[LinkedIn Recruiter] Tab not found.");
     return;
   }
 
-  const count = extractAttachmentCount(attachmentsTab);
-  if (count < 1) {
-    console.log(`[LinkedIn Recruiter] Aucune pièce jointe détectée (count = ${count}). Onglet non cliqué.`);
-    return;
+  let count = null;
+  const isAttachmentsTab = tab.hasAttribute('data-live-test-profile-attachments-tab');
+
+  if (isAttachmentsTab) {
+    count = extractAttachmentCount(tab);
+    console.error("count", count);
+    if (count < 1) {
+      console.log(`[LinkedIn Recruiter] Aucune pièce jointe détectée (count = ${count}). Onglet non cliqué.`);
+      return;
+    }
   }
 
-  await clickAttachmentsTab(attachmentsTab, count);
+  await clickTab(tab, count);
 }
 
 function extractAttachmentCount(tabElement) {
   const labelText = tabElement?.querySelector('div')?.innerText?.trim() || '';
   const match = labelText.match(/\((\d+)\)/);
-  return match ? parseInt(match[1], 10) : 0;
+  const number = match ? parseInt(match[1], 10) : 0;
+  return number;
 }
 
-async function clickAttachmentsTab(tab, count) {
+async function clickTab(tab, count) {
   const rDelay = getRandomInRange();
   console.log(`[LinkedIn Recruiter] ${count} pièce(s) jointe(s) détectée(s). Attente de ${rDelay}ms avant clic...`);
   await delay(rDelay);
   clickRandomSpotInside(tab);
-  console.log("[LinkedIn Recruiter] Onglet pièces jointes cliqué.");
 }
 
 // === Communication avec le background ===
@@ -325,7 +336,7 @@ function getCandidateListLinks() {
   return links;
 }
 
-async function waitForProfileOpen(timeout = 10000) {
+async function waitForProfileOpen(timeout = 1000) {
   const start = Date.now();
   while (!isOnLinkedInProfilePage()) {
     if (Date.now() - start > timeout) {
@@ -382,10 +393,10 @@ function getRandomOffset(length) {
   return Math.max(1, Math.min(length - 1, length * bias + fuzz));
 }
 
-function waitForElement(selector, timeout = 10000) {
+function waitForElement(selector, timeout = 2000) {
   return new Promise((resolve, reject) => {
-    const existingElements = document.querySelectorAll(selector);
-    if (existingElements.length > 0) {
+    const existingElements = document.querySelector(selector);
+    if (existingElements) {
       return resolve(existingElements);
     }
 
