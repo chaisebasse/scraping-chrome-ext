@@ -51,6 +51,7 @@ async function scrapeHwProfile() {
   console.log("[Hellowork] Scraper lancé");
   
   try {
+    await awaitPdfViewerReady();
     const scrapedData = await formatScrapedData();
     console.log("[Hellowork] Données extraites :", scrapedData);
     if (scrapedData.firstName && scrapedData.lastName) {
@@ -86,17 +87,31 @@ async function formatScrapedData() {
 }
 
 async function extractProfileName() {
-  await waitForElement("title");
-  const title = document.title;
+  const timeout = 2000;
+  const interval = 300;
+  const start = Date.now();
 
-  const namePart = title.split(' - ')[0].trim();
+  const nameRegex = /^(.+?)\s+(.+)\s+-/;
 
-  const nameMatch = namePart.match(/^(.+?)\s+(.+)$/u);
+  while (true) {
+    const title = document.title.trim();
 
-  return { firstName, lastName } = nameMatch
-    ? { firstName: nameMatch[1], lastName: nameMatch[2] }
-    : { firstName: '', lastName: '' };
+    if (nameRegex.test(title)) {
+      const namePart = title.split(' - ')[0].trim();
+      const nameMatch = namePart.match(/^(.+?)\s+(.+)$/u);
+      if (nameMatch) {
+        return { firstName: nameMatch[1], lastName: nameMatch[2] };
+      }
+    }
+
+    if (Date.now() - start > timeout) {
+      throw new Error("Timeout: Le titre de la page n'a pas atteint le format attendu");
+    }
+
+    await delay(interval);
+  }
 }
+
 
 async function extractProfileData() {
   await clickApplicantDetail("#contactEmail");
@@ -145,88 +160,56 @@ function normalizeFrenchNumber(rawPhone) {
   return null;
 }
 
-async function closeDetail() {
-  const closeBtn = document
-    .querySelector("#tools > contact-workflow")
-    .shadowRoot.querySelector("#emailToApplicant")
-    .shadowRoot.querySelector("#close");
+/**
+ * Waits for the nested PDF viewer component to be fully rendered.
+ * This ensures the page is ready before scraping begins.
+ * @param {number} [timeout=5000] - Timeout for the entire check.
+ */
+async function awaitPdfViewerReady(timeout = 5000) {
+  console.log("[Hellowork] Waiting for PDF viewer to be ready...");
+
+  const docViewer = await waitForElement("#documentViewer", timeout);
+  if (!docViewer.shadowRoot) throw new Error("documentViewer shadowRoot not found.");
   
-  clickRandomSpotInside(closeBtn);
+  const pdfHost = await waitForElementInRoot(docViewer.shadowRoot, "div > hw-pdf-viewer", timeout);
+  if (!pdfHost.shadowRoot) throw new Error("hw-pdf-viewer shadowRoot not found.");
 
-  await waitForElementGone('#emailToApplicant');
+  await waitForElementInRoot(pdfHost.shadowRoot, "#viewer", timeout);
+  console.log("[Hellowork] PDF viewer is ready.");
 }
 
-function clickRandomSpotInside(element) {
-  rect = element.getBoundingClientRect();
-
-  const x = rect.left + getRandomOffset(rect.width);
-  const y = rect.top + getRandomOffset(rect.height);
-
-  const eventOpts = {
-    bubbles: true,
-    cancelable: true,
-    clientX: x,
-    clientY: y,
-  };
-
-  ["mousedown", "mouseup", "click"].forEach((type) => {
-    element.dispatchEvent(new MouseEvent(type, eventOpts));
-  });
-}
-
-function getRandomOffset(length) {
-  const biasZones = [0.1, 0.5, 0.9];
-  const bias = biasZones[Math.floor(Math.random() * biasZones.length)];
-  const fuzz = (Math.random() - 0.5) * 20; // ±10px
-  return Math.max(1, Math.min(length - 1, length * bias + fuzz));
-}
-
-function createObserver({ root, selector, resolve, reject, timeout, checkGone = false }) {
-  let timeoutId;
-  const observer = new MutationObserver(() => {
-    const el = root.querySelector(selector);
-    if ((checkGone && !el) || (!checkGone && el)) {
-      observer.disconnect();
-      if (timeoutId) clearTimeout(timeoutId);
-      resolve(el);
-    }
-  });
-  observer.observe(root, { childList: true, subtree: true });
-  if (timeout) timeoutId = createTimeout(selector, timeout, observer, reject);
-}
-
-function waitForElement(selector, timeout = 10000) {
-  return new Promise((resolve, reject) => {
-    const el = document.querySelector(selector);
-    if (el) return resolve(el);
-    createObserver({ root: document.body, selector, resolve, reject, timeout });
-  });
-}
-
-function waitForElementInsideShadow(shadowHostSelector, innerSelector, timeout = 10000) {
+function waitForElementInsideShadow(shadowHostSelector, innerSelector, timeout = 2000) {
   return new Promise((resolve, reject) => {
     const host = document.querySelector(shadowHostSelector);
     if (!host || !host.shadowRoot) return reject(new Error(`Shadow host not found: ${shadowHostSelector}`));
-    const el = host.shadowRoot.querySelector(innerSelector);
-    if (el) return resolve(el);
-    createObserver({ root: host.shadowRoot, selector: innerSelector, resolve, reject, timeout });
+    resolve(waitForElementInRoot(host.shadowRoot, innerSelector, timeout));
   });
 }
 
-function waitForElementGone(selector, timeout = 5000) {
+function waitForElementGone(selector, timeout = 2000) {
   return new Promise((resolve, reject) => {
     if (!document.querySelector(selector)) return resolve();
-    createObserver({ root: document.body, selector, resolve, reject, timeout, checkGone: true });
+    // Note: We need a local createObserver here just for the checkGone functionality
+    const observer = new MutationObserver(() => {
+      if (!document.querySelector(selector)) {
+        observer.disconnect();
+        resolve();
+      }
+    });
+    observer.observe(document.body, { childList: true, subtree: true });
+    setTimeout(() => {
+      observer.disconnect();
+      reject(new Error(`Timeout waiting for element to be gone: ${selector}`));
+    }, timeout);
   });
 }
 
-function createTimeout(selector, timeout, observer, reject) {
-  return setTimeout(() => {
-    observer.disconnect();
-    reject(new Error(`Timeout: Élément ${selector} introuvable`));
-  }, timeout);
-}
-
-function delay(ms) {
-  return new Promise(resolve => setTimeout(resolve, ms));
+async function closeDetail() {
+  const closeBtn = await waitForElementInsideShadow(
+    "#tools > contact-workflow",
+    "#emailToApplicant"
+  ).then(el => el.shadowRoot.querySelector("#close"));
+  
+  clickRandomSpotInside(closeBtn);
+  await waitForElementGone('#emailToApplicant');
 }

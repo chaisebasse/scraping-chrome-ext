@@ -65,7 +65,8 @@
   "host_permissions": [
     "https://www.linkedin.com/*",
     "http://s-tom-1:90/MeilleurPilotage/*",
-    "https://app-recruteur.hellowork.com/*"
+    "https://app-recruteur.hellowork.com/*",
+    "https://api-hwrecruteur.hellowork.com/*"
   ],
 
   "web_accessible_resources": [

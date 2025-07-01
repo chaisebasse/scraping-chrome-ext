@@ -142,7 +142,7 @@ function base64ToBlob(base64, contentType = 'application/pdf') {
 /**
  * Attend l’apparition du CV encodé en base64 dans le `sessionStorage`.
  *
- * @param {number} [timeout=15000] - Temps maximal d’attente en millisecondes.
+ * @param {number} [timeout=5000] - Temps maximal d’attente en millisecondes.
  * @returns {Promise<Blob>} Une promesse qui se résout avec le Blob du CV.
  */
 function getScrapedCv(timeout = 5000) {

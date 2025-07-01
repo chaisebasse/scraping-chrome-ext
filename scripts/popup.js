@@ -170,7 +170,10 @@ document.addEventListener("DOMContentLoaded", () => {
 
         await chrome.scripting.executeScript({
           target: { tabId: tab.id },
-          files: [scriptPath],
+          files: [
+            "scripts/common/domUtils.js", // Inject the helpers first
+            scriptPath
+          ],
         });
 
         chrome.tabs.sendMessage(tab.id, { action: messageAction }, (response) => {
