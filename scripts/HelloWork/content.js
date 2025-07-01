@@ -112,7 +112,6 @@ async function extractProfileName() {
   }
 }
 
-
 async function extractProfileData() {
   await clickApplicantDetail("#contactEmail");
   const emailElement = await waitForElementInsideShadow('#tools > contact-workflow', '#emailToApplicant');
@@ -189,7 +188,6 @@ function waitForElementInsideShadow(shadowHostSelector, innerSelector, timeout =
 function waitForElementGone(selector, timeout = 2000) {
   return new Promise((resolve, reject) => {
     if (!document.querySelector(selector)) return resolve();
-    // Note: We need a local createObserver here just for the checkGone functionality
     const observer = new MutationObserver(() => {
       if (!document.querySelector(selector)) {
         observer.disconnect();

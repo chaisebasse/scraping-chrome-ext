@@ -136,8 +136,11 @@ document.addEventListener("DOMContentLoaded", () => {
   const runMPButton = document.getElementById("runMPBtn");
   const runHwButton = document.getElementById("runHwBtn");
   const choixRecrBtn = document.getElementById("choixRecrBtn");
-  const runLinkedInButton = document.getElementById("runLinkedInBtn");
+  const runWithJobIdBtn = document.getElementById("runWithJobIdBtn");
   const choixRecherche = document.getElementById("choixRecherche");
+
+  // Variable pour stocker l'action de scraping en attente après le choix du Job ID
+  let pendingScraperAction = null;
 
   // Lors du clic sur le bouton, on déclenche l'injection du script + le scraping
   function injectAndSend(scriptPath, messageAction) {
@@ -192,18 +195,29 @@ document.addEventListener("DOMContentLoaded", () => {
     injectAndSend("scripts/MP/content.js", "runMPScraper");
   });
 
-  // Bouton pour Hellowork
+  // Bouton pour Hellowork - Affiche la page de sélection du Job ID
   runHwButton.addEventListener("click", () => {
-    injectAndSend("scripts/HelloWork/content.js", "runHwScraper");
-  });
-
-  // Bouton pour LinkedIn
-  runLinkedInButton.addEventListener("click", () => {
-    injectAndSend("scripts/LinkedIn/content.js", "runLinkedinScraper");
-  });
-
-  choixRecrBtn.addEventListener("click", () => {
+    pendingScraperAction = {
+      scriptPath: "scripts/HelloWork/content.js",
+      messageAction: "runHwScraper"
+    };
     showPage(choixRecherche, mainPage);
+  });
+
+  // Bouton pour LinkedIn - Affiche la page de sélection du Job ID
+  choixRecrBtn.addEventListener("click", () => {
+    pendingScraperAction = {
+      scriptPath: "scripts/LinkedIn/content.js",
+      messageAction: "runLinkedinScraper"
+    };
+    showPage(choixRecherche, mainPage);
+  });
+
+  // Bouton pour démarrer le scraping (LinkedIn ou Hellowork) après le choix
+  runWithJobIdBtn.addEventListener("click", () => {
+    if (pendingScraperAction) {
+      injectAndSend(pendingScraperAction.scriptPath, pendingScraperAction.messageAction);
+    }
   });
 
   const mainPage = document.getElementById("mainPage");
