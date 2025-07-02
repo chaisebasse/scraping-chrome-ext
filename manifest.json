@@ -45,6 +45,16 @@
       ],
       "js": ["scripts/Insert/contentBridge.js"],
       "run_at": "document_idle"
+    },
+    {
+      "matches": [
+        "https://app-recruteur.hellowork.com/*"
+      ],
+      "js": [
+        "scripts/common/domUtils.js",
+        "scripts/HelloWork/content.js"
+      ],
+      "run_at": "document_idle"
     }
   ],
 

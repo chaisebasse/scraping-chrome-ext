@@ -146,14 +146,14 @@ document.addEventListener("DOMContentLoaded", () => {
   function injectAndSend(scriptPath, messageAction) {
     chrome.tabs.query({ active: true, currentWindow: true }, async ([tab]) => {
       if (!tab?.id) return;
-
-      // Check if the script is from the HelloWork folder and if we are on a Hellowork URL
+ 
       const isHelloworkScraper = scriptPath.startsWith("scripts/HelloWork/");
-      const isHelloworkUrl = tab.url && tab.url.includes("app-recruteur.hellowork.com");
-
+      // Only reload if starting a scrape from a single candidate's detail page.
+      // This avoids reloading the list page unnecessarily.
+      const isHelloworkProfileUrl = tab.url && tab.url.includes("app-recruteur.hellowork.com/applicant/detail/");
+ 
       try {
-        // If both conditions are true, reload the page before injecting the script
-        if (isHelloworkScraper && isHelloworkUrl) {
+        if (isHelloworkScraper && isHelloworkProfileUrl) {
           console.log(`[Popup] Reloading Hellowork tab ${tab.id} before scraping...`);
           // 1. Reload the current tab
           chrome.tabs.reload(tab.id);
