@@ -51,7 +51,7 @@ if (!window.hwScraperListenerRegistered) {
  */
 function handleProfilePageContinuation(state) {
   if (state.inProgress) {
-    processProfilePageInListScrape(state);
+    processProfilePageInListScrape();
   }
 }
 
@@ -280,7 +280,7 @@ async function scrollToBottomAndCollectLinks() {
 
 function logTargetCount(total) {
   if (total !== null) {
-    console.error(`[HelloWork] Target: ${total} candidates.`);
+    console.log(`[HelloWork] Target: ${total} candidates.`);
   }
 }
 
@@ -349,7 +349,10 @@ function collectLinksFromVisibleCards(allLinks) {
   for (const card of cards) {
     const link = findLinkInCard(card);
     if (link) {
-      allLinks.add(link);
+      // Normalize the URL by removing query parameters to prevent adding
+      // the same profile multiple times due to different tracking IDs.
+      const baseUrl = link.split('?')[0];
+      allLinks.add(baseUrl);
     }
   }
 }
@@ -369,16 +372,6 @@ function wasScrapingStopped(currentState) {
 }
 
 /**
- * Updates the state and navigates to the next profile in the list.
- */
-function navigateToNextProfile(state) {
-  const nextIndex = state.currentIndex + 1;
-  const newState = { ...state, currentIndex: nextIndex };
-  sessionStorage.setItem('hwListScrapeState', JSON.stringify(newState));
-  window.location.href = newState.urls[nextIndex];
-}
-
-/**
  * Navigates back to the original list page when scraping is complete.
  */
 function returnToListPage(state) {
@@ -386,7 +379,7 @@ function returnToListPage(state) {
   window.location.href = state.returnUrl;
 }
 
-async function processProfilePageInListScrape(state) {
+async function processProfilePageInListScrape() {
   await scrapeHwProfile();
 
   const currentState = JSON.parse(sessionStorage.getItem('hwListScrapeState'));
@@ -394,7 +387,10 @@ async function processProfilePageInListScrape(state) {
 
   const nextIndex = currentState.currentIndex + 1;
   if (nextIndex < currentState.urls.length) {
-    navigateToNextProfile(currentState);
+    const newState = { ...currentState, currentIndex: nextIndex };
+    sessionStorage.setItem('hwListScrapeState', JSON.stringify(newState));
+    console.log(`[HelloWork] Navigating to next profile, index ${nextIndex}.`);
+    window.location.href = newState.urls[nextIndex];
   } else {
     returnToListPage(currentState);
   }
