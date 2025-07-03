@@ -53,6 +53,15 @@
         background-color: #45a049;
       }
 
+      button.secondary {
+        background-color: #aaa;
+        margin-top: 6px;
+      }
+
+      button.secondary:hover {
+        background-color: #888;
+      }
+
     </style>
   </head>
   <body>
@@ -75,6 +84,7 @@
     <div id="pageErreurs" class="page">
       <h3>Erreurs de scraping :</h3>
       <div id="errorList"></div>
+      <button id="clearErrorsBtn" class="secondary">Effacer les erreurs</button>
       <button id="backBtn">Retour</button>
     </div>
     <script src="./scripts/popup.js"></script>

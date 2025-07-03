@@ -23,6 +23,14 @@
   }
 })();
 
+function includesError(text, errorType) {
+  if (errorType === "duplicate") {
+    return text.includes("a déjà été créé");
+  } else if (errorType === "mandatoryMissing") {
+    return text.includes("Vous devez saisir le");
+  }
+}
+
 function getInsertionErrors() {
   const errors = [];
 
@@ -32,7 +40,7 @@ function getInsertionErrors() {
 
   const fullName = getFormName();
 
-  if (mailErrorText.includes("a déjà été créé")) {
+  if (includesError(mailErrorText, "duplicate") || includesError(lastNameErrorText, "duplicate")) {
     errors.push({
       type: "duplicate",
       name: fullName,
@@ -40,7 +48,7 @@ function getInsertionErrors() {
     });
   }
 
-  if (firstNameErrorText.length > 0 || lastNameErrorText.length > 0) {
+  if (includesError(firstNameErrorText, "mandatoryMissing") || includesError(lastNameErrorText, "mandatoryMissing")) {
     errors.push({
       type: "mandatoryMissing",
       name: fullName,

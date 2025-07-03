@@ -238,6 +238,7 @@ document.addEventListener("DOMContentLoaded", () => {
   const errorPage = document.getElementById("pageErreurs");
   const showErrorsBtn = document.getElementById("showErrorsBtn");
   const backBtn = document.getElementById("backBtn");
+  const clearErrorsBtn = document.getElementById("clearErrorsBtn");
   
   function showPage(pageToShow, pageToHide) {
     pageToHide.classList.remove("active");
@@ -258,6 +259,17 @@ document.addEventListener("DOMContentLoaded", () => {
 
   backBtn.addEventListener("click", () => {
     showPage(mainPage, errorPage);
+  });
+
+  clearErrorsBtn.addEventListener("click", () => {
+    chrome.runtime.sendMessage({ type: "clearInsertionErrors" }, () => {
+      if (chrome.runtime.lastError) {
+        console.error("Could not clear errors:", chrome.runtime.lastError.message);
+      } else {
+        console.log("Errors cleared.");
+        showErrorsInPopup([]); // Update the UI to show no errors
+      }
+    });
   });
 
   function showErrorsInPopup(errors) {

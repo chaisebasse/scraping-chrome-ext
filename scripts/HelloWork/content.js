@@ -425,7 +425,6 @@ function sendScrapedDataToBackground(data) {
 
 /**
  * Parses the first and last name from a formatted page title string.
- * e.g., "John DOE - Candidate" -> { firstName: "John", lastName: "DOE" }
  * @returns {{firstName: string, lastName: string}|null}
  */
 function parseNameFromTitle(title) {
