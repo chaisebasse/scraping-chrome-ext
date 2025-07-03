@@ -26,13 +26,15 @@
         font-weight: bold;
       }
 
-      input[type="number"] {
+      input[type="number"],
+      input[type="text"] {
         width: 100%;
         padding: 8px;
         font-size: 14px;
         border: 1px solid #ccc;
         border-radius: 4px;
         box-sizing: border-box;
+        margin-bottom: 12px;
       }
 
       button {
@@ -51,10 +53,6 @@
         background-color: #45a049;
       }
 
-      select {
-        height: 30px;
-        width: 100%;
-      }
     </style>
   </head>
   <body>
@@ -67,8 +65,9 @@
     </div>
 
     <div id="choixRecherche" class="page">
-      <select id="recrAssoc">Recherche Associée</select>
-  
+      <label for="recrAssocInput">Recherche Associée</label>
+      <input type="text" id="recrAssocInput" list="recrAssocList" placeholder="Tapez pour rechercher...">
+      <datalist id="recrAssocList"></datalist>
       <button id="runWithJobIdBtn">Démarrer récolte données</button>
       <button id="refreshJobIdsBtn">Vous ne trouvez pas votre recherche ?</button>
     </div>

@@ -178,7 +178,7 @@ async function clickShowMoreButton() {
   const showMoreButton = getShowMoreButton();
   if (!showMoreButton) return false;
 
-  console.log("[HelloWork] 'Show more' button found. Clicking...");
+  console.log("[HelloWork] 'Afficher les candidats suivants' button found. Clicking...");
   clickRandomSpotInside(showMoreButton);
   await delay(getRandomInRange(500, 1000));
   return true;

@@ -45,29 +45,43 @@ document.addEventListener("DOMContentLoaded", () => {
     await chrome.storage.local.set({ lastJobId: jobId });
   }
 
-  const jobSelect = document.getElementById("recrAssoc");
+  const jobInput = document.getElementById("recrAssocInput");
+  const jobDatalist = document.getElementById("recrAssocList");
+  let jobLabelToIdMap = {};
 
-  async function populateJobSelect() {
+  async function populateJobDatalist() {
     const jobIds = await getStoredJobIds();
-    const lastSelected = await getLastSelectedJobId();
+    const lastSelectedId = await getLastSelectedJobId();
 
-    jobSelect.innerHTML = "";
+    jobDatalist.innerHTML = "";
+    jobLabelToIdMap = {};
+    let lastSelectedLabel = "";
 
     jobIds.forEach(({ label, value }) => {
       const option = document.createElement("option");
-      option.value = value;
-      option.textContent = label;
-      if (value === lastSelected) {
-        option.selected = true;
+      option.value = label;
+      jobDatalist.appendChild(option);
+      jobLabelToIdMap[label] = value;
+
+      if (value === lastSelectedId) {
+        lastSelectedLabel = label;
       }
-      jobSelect.appendChild(option);
     });
+
+    if (lastSelectedLabel) {
+      jobInput.value = lastSelectedLabel;
+    }
   }
 
   updateUserInterface();
-  populateJobSelect();
-  jobSelect.addEventListener("change", () => {
-    setLastSelectedJobId(jobSelect.value);
+  populateJobDatalist();
+
+  jobInput.addEventListener("input", () => {
+    const currentLabel = jobInput.value;
+    const selectedId = jobLabelToIdMap[currentLabel];
+    if (selectedId) {
+      setLastSelectedJobId(selectedId);
+    }
   });
 
   const refreshJobIdsBtn = document.getElementById("refreshJobIdsBtn");
@@ -117,7 +131,7 @@ document.addEventListener("DOMContentLoaded", () => {
 
         if (response?.jobIds?.length) {
           await saveJobIds(response.jobIds);
-          await populateJobSelect();
+          await populateJobDatalist();
 
           // 4. Optional: close tab if we opened it
           if (targetTab.url !== tabs.find(t => t.id === targetTab.id)?.url) {
