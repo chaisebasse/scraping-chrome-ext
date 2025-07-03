@@ -443,7 +443,12 @@ function parseNameFromTitle(title) {
 async function formatScrapedData() {
   const { firstName, lastName } = await extractProfileName();
   const { email, phone } = await extractProfileData();
-  return { firstName, lastName, email, phone, source: 'hellowork', attachmentCount: 1 };
+  return {
+    firstName,
+    lastName,
+    email: email || `${firstName}_${lastName}@hellowork.com`,
+    phone, source: 'hellowork', attachmentCount: 1
+  };
 }
 
 async function extractProfileName() {
@@ -463,13 +468,13 @@ async function extractProfileName() {
 async function extractProfileData() {
   await clickApplicantDetail("#contactEmail");
   const emailElement = await waitForElementInsideShadow('#tools > contact-workflow', '#emailToApplicant');
-  const email = emailElement.getAttribute("to").trim() || "";
+  const email = (emailElement.getAttribute("to") || "").trim();
   await closeDetail();
 
   await clickApplicantDetail("hw-button#contactTel");
   const phoneElement = await waitForElement("tel-contact#telContact");
   const phone = normalizeFrenchNumber(
-    phoneElement.getAttribute("tel").trim() || ""
+    (phoneElement.getAttribute("tel") || "").trim()
   );
   return { email, phone };
 }
