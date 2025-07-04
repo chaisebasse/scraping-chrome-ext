@@ -69,7 +69,8 @@
     "tabs",
     "downloads",
     "activeTab",
-    "webRequest"
+    "webRequest",
+    "declarativeContent"
   ],
 
   "host_permissions": [

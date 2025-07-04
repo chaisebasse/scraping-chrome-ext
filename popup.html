@@ -62,6 +62,47 @@
         background-color: #888;
       }
 
+      #errorList li {
+        margin-bottom: 5px;
+        display: flex; /* Use flexbox for alignment */
+        justify-content: space-between;
+        align-items: center;
+        line-height: 1.4;
+      }
+
+      .error-text {
+        flex-grow: 1;
+      }
+
+      /* Style for the clickable links within an error message */
+      .error-link {
+        color: inherit; /* Keeps the same color as surrounding text */
+        text-decoration: underline;
+        cursor: pointer;
+      }
+
+      .error-link:hover {
+        color: #0056b3; /* Highlight on hover */
+      }
+
+      /* Styles for the individual error removal actions */
+      .error-actions {
+        display: inline-flex;
+        align-items: center;
+        margin-left: 10px; /* Space between text and actions */
+        white-space: nowrap;
+      }
+
+      .error-actions span {
+        cursor: pointer;
+        font-size: 1.4em;
+        font-weight: bold;
+        padding: 0 5px;
+        user-select: none;
+      }
+
+      .error-actions .delete-confirm { color: #4CAF50; }
+      .error-actions .delete-cancel, .error-actions .delete-initiate:hover { color: #f44336; }
     </style>
   </head>
   <body>

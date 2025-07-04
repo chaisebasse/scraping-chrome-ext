@@ -245,15 +245,14 @@ document.addEventListener("DOMContentLoaded", () => {
     pageToShow.classList.add("active");
   }
 
-  showErrorsBtn.addEventListener("click", () => {
-    chrome.runtime.sendMessage({ type: "getInsertionErrors" }, (errors) => {
-      if (chrome.runtime.lastError) {
-        console.warn("No response from background:", chrome.runtime.lastError.message);
-        showErrorsInPopup([]);
-      } else {
-        showErrorsInPopup(errors || []); // Safe fallback
-      }
-    });
+  showErrorsBtn.addEventListener("click", async () => {
+    try {
+      const errors = await chrome.runtime.sendMessage({ type: "getInsertionErrors" });
+      showErrorsInPopup(errors || []);
+    } catch (error) {
+      console.warn("No response from background:", error.message);
+      showErrorsInPopup([]);
+    }
     showPage(errorPage, mainPage);
   });
 
@@ -261,15 +260,14 @@ document.addEventListener("DOMContentLoaded", () => {
     showPage(mainPage, errorPage);
   });
 
-  clearErrorsBtn.addEventListener("click", () => {
-    chrome.runtime.sendMessage({ type: "clearInsertionErrors" }, () => {
-      if (chrome.runtime.lastError) {
-        console.error("Could not clear errors:", chrome.runtime.lastError.message);
-      } else {
-        console.log("Errors cleared.");
-        showErrorsInPopup([]); // Update the UI to show no errors
-      }
-    });
+  clearErrorsBtn.addEventListener("click", async () => {
+    try {
+      await chrome.runtime.sendMessage({ type: "clearInsertionErrors" });
+      console.log("Errors cleared.");
+      showErrorsInPopup([]);
+    } catch (error) {
+      console.error("Could not clear errors:", error.message);
+    }
   });
 
   function showErrorsInPopup(errors) {
@@ -301,9 +299,95 @@ document.addEventListener("DOMContentLoaded", () => {
       groupDiv.innerHTML = `<strong>${title}</strong><ul style="margin-top: 4px;"></ul>`;
       const ul = groupDiv.querySelector("ul");
 
-      for (const { name, reason } of list) {
+      for (const err of list) {
+        const { id, name, reason, profileUrl, source, tabId } = err;
+
         const li = document.createElement("li");
-        li.textContent = `${name} - ${reason}`;
+        const contentSpan = document.createElement("span");
+        contentSpan.className = "error-text";
+
+        contentSpan.appendChild(document.createTextNode(`${name} - ${reason} (`));
+
+        // 1. Create link to the candidate's profile
+        if (profileUrl && source) {
+          const profileLink = document.createElement("a");
+          profileLink.href = "#"; // Use JS for navigation
+          profileLink.textContent = `Voir profil ${source}`;
+          profileLink.className = "error-link";
+          profileLink.addEventListener("click", (e) => {
+            e.preventDefault();
+            chrome.tabs.create({ url: profileUrl, active: true });
+          });
+          contentSpan.appendChild(profileLink);
+        }
+
+        // Add a separator if both links are present
+        if (profileUrl && tabId) {
+          contentSpan.appendChild(document.createTextNode(" / "));
+        }
+
+        // 2. Create link to switch to the form tab
+        if (tabId) {
+          const tabLink = document.createElement("a");
+          tabLink.href = "#"; // Use JS for navigation
+          tabLink.textContent = "Aller à l'onglet";
+          tabLink.className = "error-link";
+          tabLink.addEventListener("click", (e) => {
+            e.preventDefault();
+            chrome.tabs.update(tabId, { active: true });
+            chrome.tabs.get(tabId, (tab) => {
+              if (tab.windowId) chrome.windows.update(tab.windowId, { focused: true });
+            });
+          });
+          contentSpan.appendChild(tabLink);
+        }
+
+        contentSpan.appendChild(document.createTextNode(")"));
+        li.appendChild(contentSpan);
+
+        // 3. Create the action buttons for deletion
+        const actionsSpan = document.createElement('span');
+        actionsSpan.className = 'error-actions';
+        actionsSpan.innerHTML = `
+          <span class="delete-initiate" title="Supprimer">&times;</span>
+          <span class="delete-confirm" title="Confirmer" style="display: none;">&#10003;</span>
+          <span class="delete-cancel" title="Annuler" style="display: none;">&times;</span>
+        `;
+
+        const deleteInitiate = actionsSpan.querySelector('.delete-initiate');
+        const deleteConfirm = actionsSpan.querySelector('.delete-confirm');
+        const deleteCancel = actionsSpan.querySelector('.delete-cancel');
+
+        deleteInitiate.addEventListener('click', () => {
+          deleteInitiate.style.display = 'none';
+          deleteConfirm.style.display = 'inline';
+          deleteCancel.style.display = 'inline';
+        });
+
+        deleteCancel.addEventListener('click', () => {
+          deleteInitiate.style.display = 'inline';
+          deleteConfirm.style.display = 'none';
+          deleteCancel.style.display = 'none';
+        });
+
+        deleteConfirm.addEventListener('click', async () => {
+          deleteConfirm.style.pointerEvents = 'none';
+          deleteCancel.style.pointerEvents = 'none';
+
+          try {
+            const response = await chrome.runtime.sendMessage({ type: "removeSingleError", payload: { errorId: id } });
+            if (response?.status === 'success') {
+              const errors = await chrome.runtime.sendMessage({ type: "getInsertionErrors" });
+              showErrorsInPopup(errors || []);
+            }
+          } catch (error) {
+            console.error("Error removing single error:", error.message);
+            deleteConfirm.style.pointerEvents = 'auto';
+            deleteCancel.style.pointerEvents = 'auto';
+          }
+        });
+
+        li.appendChild(actionsSpan);
         ul.appendChild(li);
       }
 

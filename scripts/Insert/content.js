@@ -70,6 +70,9 @@ function fillFormFields(scrapedData) {
         // populateInput(inputName, testValues[dataKey]);
         populateInput(inputName, scrapedData[dataKey]);
       }
+
+      // Statically set the candidate status to "A traiter" (value 2) for every candidate.
+      populateInput("MP:ID_STAT", "2");
     })
     .catch((error) => {
       console.error("Could not get job ID:", error);
@@ -124,6 +127,17 @@ function wait(ms) {
  * @param {Object} payload - Les données du candidat à insérer.
  */
 function handleCandidateDataSubmission(payload) {
+  // Store context in sessionStorage before form submission.
+  // This allows the post-submission script to access it for error reporting.
+  if (payload.profileUrl && payload.source) {
+    const context = {
+      profileUrl: payload.profileUrl,
+      source: payload.source,
+      attachmentCount: payload.attachmentCount || 0,
+    };
+    sessionStorage.setItem("submissionContext", JSON.stringify(context));
+  }
+
   fillFormFields(payload)
     .then(() => finalizeFormSubmission())
     .catch((error) => console.error("Error during candidate submission:", error));

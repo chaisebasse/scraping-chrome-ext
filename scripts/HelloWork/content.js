@@ -12,20 +12,48 @@ function initializeHwContentScript() {
   window.hwScraperListenerRegistered = true;
 
   checkAndContinueListScrape();
-  setupStopShortcutListener();
+  setupShortcutListeners();
   setupMessageListener();
 }
 
 /**
- * Sets up a keyboard shortcut (Ctrl+Alt+S) to stop an ongoing list scrape.
+ * Sets up keyboard shortcuts (Ctrl+Alt+S to stop, Ctrl+Alt+P to pause/resume).
  */
-function setupStopShortcutListener() {
+function setupShortcutListeners() {
   document.addEventListener('keydown', (event) => {
-    if (event.ctrlKey && event.altKey && event.key.toLowerCase() === 's') {
-      event.preventDefault();
-      stopScraping();
+    if (event.ctrlKey && event.altKey) {
+      if (event.key.toLowerCase() === 's') {
+        event.preventDefault();
+        updateScrapeState('stop');
+      } else if (event.key.toLowerCase() === 'p') {
+        event.preventDefault();
+        updateScrapeState('togglePause');
+      }
     }
   });
+}
+
+/**
+ * Updates the scraping state in sessionStorage for pausing or stopping.
+ * @param {'togglePause' | 'stop'} action - The action to perform.
+ */
+function updateScrapeState(action) {
+  const state = JSON.parse(sessionStorage.getItem('hwListScrapeState'));
+  if (!state?.inProgress) return;
+
+  if (action === 'togglePause') {
+    state.isPaused = !state.isPaused;
+    const message = state.isPaused ? 'Scraping PAUSED' : 'Scraping RESUMED';
+    const color = state.isPaused ? 'orange' : 'green';
+    console.log(`%c[HelloWork] ${message}. Press Ctrl+Alt+P to toggle.`, `color: ${color}; font-weight: bold;`);
+    alert(`${message}. Press Ctrl+Alt+P to toggle.`);
+  } else if (action === 'stop') {
+    state.inProgress = false;
+    console.log('[HelloWork] Stop command received. Halting scraping process.');
+    alert(`Le scraping de la liste Hellowork s'arrêtera après le candidat actuel.`);
+  }
+
+  sessionStorage.setItem('hwListScrapeState', JSON.stringify(state));
 }
 
 /**
@@ -73,19 +101,6 @@ function checkAndContinueListScrape() {
   else if (isOnHwListPage()) {
     handleListPageReturn(state);
   }
-}
-
-/**
- * Sets the scraping state to 'stopped' in sessionStorage.
- */
-function stopScraping() {
-  const state = JSON.parse(sessionStorage.getItem('hwListScrapeState'));
-  if (!state?.inProgress) return;
-
-  console.log('[HelloWork] Stop command received. Halting scraping process.');
-  state.inProgress = false;
-  sessionStorage.setItem('hwListScrapeState', JSON.stringify(state));
-  alert(`Le scraping de la liste Hellowork s'arrêtera après le candidat actuel.`);
 }
 
 /**
@@ -140,6 +155,7 @@ async function scrapeHwProfile() {
 function createAndStoreScrapeState(urls) {
   const state = {
     inProgress: true,
+    isPaused: false,
     urls: urls,
     currentIndex: 0,
     returnUrl: window.location.href
@@ -382,8 +398,17 @@ function returnToListPage(state) {
 async function processProfilePageInListScrape() {
   await scrapeHwProfile();
 
-  const currentState = JSON.parse(sessionStorage.getItem('hwListScrapeState'));
+  let currentState = JSON.parse(sessionStorage.getItem('hwListScrapeState'));
   if (wasScrapingStopped(currentState)) return;
+
+  // Pause check loop
+  while (currentState.isPaused) {
+    console.log("[HelloWork] Scraping is paused. Checking again in 2 seconds...");
+    await delay(2000);
+    currentState = JSON.parse(sessionStorage.getItem('hwListScrapeState'));
+    // Also check if it was stopped while paused
+    if (wasScrapingStopped(currentState)) return;
+  }
 
   const nextIndex = currentState.currentIndex + 1;
   if (nextIndex < currentState.urls.length) {
@@ -446,7 +471,10 @@ async function formatScrapedData() {
     firstName,
     lastName,
     email: email || `${firstName}_${lastName}@hellowork.com`,
-    phone, source: 'hellowork', attachmentCount: 1
+    phone,
+    source: 'hellowork',
+    attachmentCount: 1,
+    profileUrl: location.href
   };
 }
 

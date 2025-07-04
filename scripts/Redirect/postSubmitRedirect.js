@@ -1,18 +1,9 @@
 // === Extraction du numéro interne et envoi du CV ===
-(function () {
+(async function () {
+  // NOTE: This script runs after a form submission. It relies on the context
+  // (profileUrl, source) being saved to sessionStorage by `Insert/content.js`
+  // before the form was submitted.
   if (!wasFormJustSubmitted()) return;
-
-  // if (sessionStorage.getItem("linkedinCvBase64")) { // TODO: Revoir condition (au cas où pas encore arrivé)
-    const fk = extractFk();
-    if (fk) {
-      console.log("fk extrait :", fk);
-      uploadCandidateCv(fk);
-    } else if (!fk) {
-      console.warn("Échec de l'extraction du numéro interne.");
-    }
-  // } else {
-  //   console.warn("pas de cv");
-  // }
 
   const insertionErrors = getInsertionErrors();
   if (insertionErrors.length > 0) {
@@ -20,7 +11,27 @@
       type: "addInsertionErrors",
       payload: insertionErrors
     });
+    sessionStorage.removeItem('submissionContext');
+    return; // Stop here if there are errors
   }
+
+  // If no errors, it's a success. Handle CV upload and then close the tab.
+  const fk = extractFk();
+  if (!fk) {
+    console.warn("Échec de l'extraction du numéro interne. Le CV ne peut pas être uploadé et l'onglet ne sera pas fermé.");
+    sessionStorage.removeItem('submissionContext');
+    return;
+  }
+
+  const submissionContext = JSON.parse(sessionStorage.getItem("submissionContext") || "{}");
+  if (submissionContext.attachmentCount > 0) {
+    console.log("CV attendu, tentative d'upload...");
+    await uploadCandidateCv(fk);
+  }
+
+  console.log("Candidat inséré avec succès. Fermeture de l'onglet...");
+  chrome.runtime.sendMessage({ type: "close_successful_submission_tab" });
+  sessionStorage.removeItem('submissionContext');
 })();
 
 function includesError(text, errorType) {
@@ -33,6 +44,10 @@ function includesError(text, errorType) {
 
 function getInsertionErrors() {
   const errors = [];
+  // Retrieve context saved by the form-filling script before submission.
+  const submissionContext = JSON.parse(
+    sessionStorage.getItem("submissionContext") || "{}"
+  );
 
   const mailErrorText = document.querySelector("mp\\:err_mail")?.innerText.trim() || "";
   const lastNameErrorText = document.querySelector("mp\\:err_nom")?.innerText.trim() || "";
@@ -44,7 +59,8 @@ function getInsertionErrors() {
     errors.push({
       type: "duplicate",
       name: fullName,
-      reason: "Même mail ou nom déjà utilisé."
+      reason: "Même mail ou nom déjà utilisé.",
+      ...submissionContext // Add profileUrl and source
     });
   }
 
@@ -52,7 +68,8 @@ function getInsertionErrors() {
     errors.push({
       type: "mandatoryMissing",
       name: fullName,
-      reason: "Prénom ou nom manquant."
+      reason: "Prénom ou nom manquant.",
+      ...submissionContext // Add profileUrl and source
     });
   }
 

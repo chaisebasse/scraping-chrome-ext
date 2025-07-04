@@ -21,18 +21,24 @@ export function handleInsertToMP() {
     chrome.webRequest.onBeforeRequest.addListener(handleWebRequest, { urls: allUrlPatterns });
     console.log("[BackgroundInsert] Persistent CV interceptor is active.");
   }
-  chrome.runtime.onMessage.addListener(onMessageReceived);
 }
 
-function onMessageReceived(message, sender, sendResponse) {
-  if (message.action !== "send_candidate_data") return;
-  processCandidateMessage(message.scrapedData, sender)
-    .then(() => sendResponse({ status: "success", message: "Candidate processed" }))
-    .catch((error) => {
+/**
+ * Handles messages related to candidate data.
+ * @returns A promise that resolves with the response, or a symbol if not handled.
+ */
+export async function handleCandidateMessage(message, sender) {
+  // Only act on the "send_candidate_data" action.
+  if (message.action === "send_candidate_data") {
+    try {
+      await processCandidateMessage(message.scrapedData, sender);
+      return { status: "success", message: "Candidate processed" };
+    } catch (error) {
       console.error("Error processing candidate:", error);
-      sendResponse({ status: "error", message: error.message });
-    });
-  return true;
+      return { status: "error", message: error.message };
+    }
+  }
+  return Symbol.for('messageNotHandled');
 }
 
 async function processCandidateMessage(scrapedData, sender) {

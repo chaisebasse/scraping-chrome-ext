@@ -1,3 +1,16 @@
+window.isScrapingPaused = false;
+
+function togglePauseScraping() {
+  window.isScrapingPaused = !window.isScrapingPaused;
+  if (window.isScrapingPaused) {
+    const message = 'Scraping PAUSED. Press Ctrl+Alt+P to resume.';
+    console.log(`%c[LinkedIn Recruiter] ${message}`, 'color: orange; font-weight: bold;');
+    alert(message);
+  } else {
+    console.log('%c[LinkedIn Recruiter] Scraping RESUMED.', 'color: green; font-weight: bold;');
+  }
+}
+
 if (!window.linkedinScraperListenerRegistered) {
   window.linkedinScraperListenerRegistered = true;
   chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
@@ -5,6 +18,13 @@ if (!window.linkedinScraperListenerRegistered) {
       routeScraperBasedOnPage();
       sendResponse({ status: 'success' });
       return true;
+    }
+  });
+
+  document.addEventListener('keydown', (event) => {
+    if (event.ctrlKey && event.altKey && event.key.toLowerCase() === 'p') {
+      event.preventDefault();
+      togglePauseScraping();
     }
   });
 }
@@ -56,7 +76,8 @@ async function extractProfileDataWithAttachments() {
     firstName,
     lastName,
     ...contactInfo,
-    source: 'linkedin'
+    source: 'linkedin',
+    profileUrl: location.href // Use the current Recruiter URL for direct navigation
   };
 
   console.log("[LinkedIn Recruiter] Données extraites :", scrapedData);
@@ -67,13 +88,12 @@ async function extractProfileDataWithAttachments() {
  * Extrait les informations de contact (email, téléphone, URL) du profil.
  * @param {string} firstName - Le prénom du candidat.
  * @param {string} lastName - Le nom de famille du candidat.
- * @returns {{email: string, phone: string|null, publicProfileUrl: string|null}}
+ * @returns {{email: string, phone: string|null}}
  */
 function extractContactInfo(firstName, lastName) {
   const email = document.querySelector("span[data-test-contact-email-address]")?.textContent.trim() || `${firstName}_${lastName}@linkedin.com`;
   const phone = document.querySelector("span[data-test-contact-phone][data-live-test-contact-phone]")?.textContent.trim() || null;
-  const publicProfileUrl = document.querySelector("a[data-test-public-profile-link]")?.href || null;
-  return { email, phone, publicProfileUrl };
+  return { email, phone };
 }
 
 /**
@@ -200,11 +220,34 @@ async function maybeSendData(scrapedData) {
  * Orchestre le scraping d'une liste de profils.
  */
 async function scrapeListOfProfiles() {
-  await prepareForListScraping();
-  const candidateLinks = getCandidateListLinks();
-  console.log(`[LinkedIn Recruiter] ${candidateLinks.length} candidats détectés.`);
-  await processCandidateList(candidateLinks);
-  console.log("[LinkedIn Recruiter] Scraping de la liste terminé.");
+  let pageNumber = 1;
+  while (true) {
+    console.log(`[LinkedIn Recruiter] Processing page ${pageNumber}...`);
+    await prepareForListScraping();
+    const candidateLinks = getCandidateListLinks();
+
+    if (candidateLinks.length === 0) {
+      console.warn(`[LinkedIn Recruiter] No candidates found on page ${pageNumber}. Stopping.`);
+      break;
+    }
+
+    console.log(`[LinkedIn Recruiter] ${candidateLinks.length} candidats détectés on page ${pageNumber}.`);
+    await processCandidateList(candidateLinks);
+
+    const nextButton = document.querySelector('a[data-test-pagination-next]');
+    const isDisabled = nextButton?.getAttribute('aria-disabled') === 'true';
+
+    if (!nextButton || isDisabled) {
+      console.log("[LinkedIn Recruiter] No more pages to scrape. Scraping finished.");
+      break;
+    }
+
+    console.log("[LinkedIn Recruiter] Next page button found. Clicking to go to next page...");
+    clickRandomSpotInside(nextButton);
+    await waitForNextPageLoad();
+    pageNumber++;
+  }
+  console.log("[LinkedIn Recruiter] Scraping of all pages is complete.");
 }
 
 /**
@@ -224,6 +267,9 @@ async function prepareForListScraping() {
  */
 async function processCandidateList(links) {
   for (let i = 0; i < links.length; i++) {
+    while (window.isScrapingPaused) {
+      await delay(1000); // Wait 1 second before checking again
+    }
     await processSingleCandidateFromList(links[i], i + 1);
     await delay(getRandomInRange(500, 3100));
   }
@@ -256,6 +302,32 @@ async function openProfileFromList(link) {
   await waitForProfileOpen();
   await waitForElement('[data-live-test-profile-attachments-tab]');
   await waitForElement('[data-live-test-row-lockup-full-name]');
+}
+
+/**
+ * Waits for the next page of candidates to load by checking for the old list to disappear.
+ * @param {number} [timeout=15000] - Timeout in milliseconds.
+ */
+async function waitForNextPageLoad(timeout = 15000) {
+  console.log("[LinkedIn Recruiter] Waiting for next page to load...");
+  // A simple but effective way for SPAs is to wait for a key element to be stale.
+  const firstCandidateElement = document.querySelector('ol[data-test-paginated-list] li');
+  if (!firstCandidateElement) {
+    // If there's no list, maybe it's just loading. Wait a bit.
+    await delay(3000);
+    return;
+  }
+
+  const start = Date.now();
+  while (document.body.contains(firstCandidateElement)) {
+    if (Date.now() - start > timeout) {
+      throw new Error("Timeout waiting for next page to load. The old content is still present.");
+    }
+    await delay(200); // Check every 200ms
+  }
+  console.log("[LinkedIn Recruiter] New page content detected.");
+  // Add an extra delay for content to fully render
+  await delay(getRandomInRange(1000, 2000));
 }
 
 /**
