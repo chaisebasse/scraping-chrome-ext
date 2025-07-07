@@ -62,8 +62,8 @@ function updateScrapeState(action) {
 function setupMessageListener() {
   chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     if (message.action === "runHwScraper") {
-      console.log("[HelloWork] Received scraping request. Routing...");
-      routeScraperBasedOnPage();
+      console.log(`[HelloWork] Received scraping request with max candidates: ${message.maxCandidates}. Routing...`);
+      routeScraperBasedOnPage(message.maxCandidates);
       sendResponse({ status: 'success', from: 'hellowork' });
       return true;
     }
@@ -106,11 +106,11 @@ function checkAndContinueListScrape() {
 /**
  * Determines which scraping function to call based on the current page URL.
  */
-function routeScraperBasedOnPage() {
+function routeScraperBasedOnPage(maxCandidates) {
   if (isOnHwProfilePage()) {
     scrapeHwProfile();
   } else if (isOnHwListPage()) {
-    scrapeHwList();
+    scrapeHwList(maxCandidates);
   } else {
     console.warn("[HelloWork] Page non supportée pour le scraping.");
   }
@@ -168,8 +168,8 @@ function createAndStoreScrapeState(urls) {
  * Initiates the scraping of a list of candidates.
  * It gathers all profile links, saves the state, and navigates to the first profile.
  */
-async function scrapeHwList() {
-  console.log('[HelloWork] Starting list scraping...');
+async function scrapeHwList(maxCandidates = 50) {
+  console.log(`[HelloWork] Starting list scraping with a max of ${maxCandidates} candidates...`);
 
   // 1. Find the shadowRoot where cards live. This is the key insight you provided!
   const resultList = document.querySelector("#result-list");
@@ -185,19 +185,21 @@ async function scrapeHwList() {
     console.log(`[HelloWork] Found ${visibleCards.length} visible candidate(s). Starting scrape from current position.`);
     // scrollToBottomAndCollectLinks() starts from the current scroll position and proceeds downwards.
     // This correctly implements the desired behavior of starting from what the user sees.
-    candidateUrls = await scrollToBottomAndCollectLinks();
+    candidateUrls = await scrollToBottomAndCollectLinks(maxCandidates);
   } else {
     // No candidates in view, so do the normal routine.
     console.log('[HelloWork] No visible candidates. Starting from the top.');
     await fastScrollToTop();
-    candidateUrls = await scrollToBottomAndCollectLinks();
+    candidateUrls = await scrollToBottomAndCollectLinks(maxCandidates);
   }
 
   if (!candidateUrls || candidateUrls.length === 0) {
     return console.warn('[HelloWork] No candidate links found.');
   }
 
-  const state = createAndStoreScrapeState(candidateUrls);
+  // Apply the final limit to the collected URLs before saving the state.
+  const limitedUrls = candidateUrls.slice(0, maxCandidates);
+  const state = createAndStoreScrapeState(limitedUrls);
   console.log(`[HelloWork] Stored state for ${state.urls.length} candidates. Navigating...`);
   window.location.href = state.urls[0];
 }
@@ -310,12 +312,12 @@ function getTotalCandidateCount() {
   return count;
 }
 
-async function scrollToBottomAndCollectLinks() {
+async function scrollToBottomAndCollectLinks(maxCandidates) {
   console.log("[HelloWork] Scrolling to collect all candidate links...");
   const allLinks = new Set();
   const totalCandidates = getTotalCandidateCount();
 
-  logTargetCount(totalCandidates);
+  logTargetCount(totalCandidates, maxCandidates);
 
   while (true) {
     // 1. Collect links from currently visible cards.
@@ -323,7 +325,7 @@ async function scrollToBottomAndCollectLinks() {
     getLinksFromVisibleCards().forEach(link => allLinks.add(link));
 
     // 2. Check if we have met the target or finished scrolling.
-    if (hasCollectedAll(allLinks, totalCandidates)) {
+    if (hasCollectedAll(allLinks, totalCandidates, maxCandidates)) {
       break;
     }
     
@@ -338,16 +340,24 @@ async function scrollToBottomAndCollectLinks() {
   return Array.from(allLinks);
 }
 
-function logTargetCount(total) {
+function logTargetCount(total, maxCandidates) {
   if (total !== null) {
-    console.log(`[HelloWork] Target: ${total} candidates.`);
+    console.log(`[HelloWork] Page has ${total} candidates. User limit is ${maxCandidates}.`);
+  } else {
+    console.log(`[HelloWork] User limit is ${maxCandidates}.`);
   }
 }
 
-function hasCollectedAll(allLinks, total) {
+function hasCollectedAll(allLinks, total, maxCandidates) {
+  if (allLinks.size >= maxCandidates) {
+    console.log(
+      `[HelloWork] Collected ${allLinks.size} links, reaching user limit of ${maxCandidates}.`
+    );
+    return true;
+  }
   if (total !== null && allLinks.size >= total) {
     console.log(
-      `[HelloWork] Collected ${allLinks.size} links, meeting target of ${total}.`
+      `[HelloWork] Collected ${allLinks.size} links, meeting page total of ${total}.`
     );
     return true;
   }

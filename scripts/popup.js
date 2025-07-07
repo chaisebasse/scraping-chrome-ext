@@ -47,7 +47,32 @@ document.addEventListener("DOMContentLoaded", () => {
 
   const jobInput = document.getElementById("recrAssocInput");
   const jobDatalist = document.getElementById("recrAssocList");
+  const maxCandidatesInput = document.getElementById("maxCandidatesInput");
   let jobLabelToIdMap = {};
+  // This variable will hold the value of the input right before a change,
+  // which helps us determine the direction of a click on the stepper arrows.
+  let valueBeforeChange = null;
+
+  /**
+   * Applies the custom stepping logic for LinkedIn.
+   * @param {number} currentValue The number before the step.
+   * @param {'up' | 'down'} direction The direction of the step.
+   * @returns {number} The new value after applying the custom step.
+   */
+  function getNewSteppedValue(currentValue, direction) {
+    let newValue = currentValue;
+
+    if (direction === 'up') {
+      // Custom logic: from 2, it jumps to 25. Otherwise, it adds 25.
+      newValue = (currentValue === 2) ? 25 : currentValue + 25;
+    } else { // 'down'
+      // Custom logic: from 25, it jumps to 2. Otherwise, it subtracts 25.
+      newValue = (currentValue === 25) ? 2 : currentValue - 25;
+    }
+
+    // The final value is always clamped to the [2, 100] range.
+    return Math.min(100, Math.max(2, newValue));
+  }
 
   async function populateJobDatalist() {
     const jobIds = await getStoredJobIds();
@@ -75,6 +100,64 @@ document.addEventListener("DOMContentLoaded", () => {
 
   updateUserInterface();
   populateJobDatalist();
+
+  maxCandidatesInput.addEventListener("change", () => {
+    const value = parseInt(maxCandidatesInput.value, 10);
+    const min = parseInt(maxCandidatesInput.min, 10) || 2;
+    if (value > 100) {
+      alert("Le nombre maximum de candidats à scraper est de 100.");
+      maxCandidatesInput.value = 100;
+    }
+    if (value < min) {
+      maxCandidatesInput.value = min;
+    }
+  });
+
+  // For custom stepping, we need to know the value *before* the change.
+  // 'mousedown' is a good event to capture this before a click on the stepper arrows.
+  maxCandidatesInput.addEventListener('mousedown', () => {
+    if (maxCandidatesInput.getAttribute('data-custom-step') === 'true') {
+      valueBeforeChange = parseInt(maxCandidatesInput.value, 10);
+    }
+  });
+
+  // The 'input' event fires for both keyboard typing and stepper arrow clicks.
+  maxCandidatesInput.addEventListener('input', () => {
+    // Only apply custom logic if it's for LinkedIn and we have a pre-change value.
+    if (maxCandidatesInput.getAttribute('data-custom-step') !== 'true' || valueBeforeChange === null) {
+      return;
+    }
+
+    const currentValue = parseInt(maxCandidatesInput.value, 10);
+
+    // This heuristic detects if the change was from a stepper click (which changes the value by 'step', i.e., 1)
+    // and not from the user typing a number manually.
+    if (Math.abs(currentValue - valueBeforeChange) === 1) {
+      const direction = currentValue > valueBeforeChange ? 'up' : 'down';
+      maxCandidatesInput.value = getNewSteppedValue(valueBeforeChange, direction);
+    }
+    // Reset for the next interaction.
+    valueBeforeChange = null;
+  });
+
+  maxCandidatesInput.addEventListener('keydown', (event) => {
+    // Only apply custom stepping logic when LinkedIn is selected (identified by data-custom-step)
+    if (maxCandidatesInput.getAttribute('data-custom-step') !== 'true') {
+      return;
+    }
+
+    if (event.key === 'ArrowUp' || event.key === 'ArrowDown') {
+      event.preventDefault(); // Prevent the default browser action.
+      const currentValue = parseInt(maxCandidatesInput.value, 10);
+      if (isNaN(currentValue)) {
+        maxCandidatesInput.value = 2; // Default to min if the field is empty
+        return;
+      }
+
+      const direction = event.key === 'ArrowUp' ? 'up' : 'down';
+      maxCandidatesInput.value = getNewSteppedValue(currentValue, direction);
+    }
+  });
 
   jobInput.addEventListener("input", () => {
     const currentLabel = jobInput.value;
@@ -161,6 +244,9 @@ document.addEventListener("DOMContentLoaded", () => {
     chrome.tabs.query({ active: true, currentWindow: true }, async ([tab]) => {
       if (!tab?.id) return;
  
+      // Read the value from the input and ensure it's a valid number.
+      const maxCandidates = parseInt(maxCandidatesInput.value, 10) || 50;
+ 
       const isHelloworkScraper = scriptPath.startsWith("scripts/HelloWork/");
       // Only reload if starting a scrape from a single candidate's detail page.
       // This avoids reloading the list page unnecessarily.
@@ -193,7 +279,7 @@ document.addEventListener("DOMContentLoaded", () => {
           ],
         });
 
-        chrome.tabs.sendMessage(tab.id, { action: messageAction }, (response) => {
+        chrome.tabs.sendMessage(tab.id, { action: messageAction, maxCandidates }, (response) => {
           if (chrome.runtime.lastError) {
             console.error("Erreur lors de l'envoi du message :", chrome.runtime.lastError.message);
           }
@@ -215,6 +301,11 @@ document.addEventListener("DOMContentLoaded", () => {
       scriptPath: "scripts/HelloWork/content.js",
       messageAction: "runHwScraper"
     };
+    // Set defaults for Hellowork
+    maxCandidatesInput.min = 2;
+    maxCandidatesInput.value = 50;
+    maxCandidatesInput.setAttribute('data-custom-step', 'false');
+    maxCandidatesInput.step = 1;
     showPage(choixRecherche, mainPage);
   });
 
@@ -224,6 +315,11 @@ document.addEventListener("DOMContentLoaded", () => {
       scriptPath: "scripts/LinkedIn/content.js",
       messageAction: "runLinkedinScraper"
     };
+    // Set defaults for LinkedIn
+    maxCandidatesInput.min = 2; // Allow manual input down to 2
+    maxCandidatesInput.value = 25;
+    maxCandidatesInput.setAttribute('data-custom-step', 'true');
+    maxCandidatesInput.step = 1; // A step of 1 is crucial for the 'input' event logic to detect stepper clicks.
     showPage(choixRecherche, mainPage);
   });
 

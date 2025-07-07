@@ -15,7 +15,8 @@ if (!window.linkedinScraperListenerRegistered) {
   window.linkedinScraperListenerRegistered = true;
   chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     if (message.action === "runLinkedinScraper") {
-      routeScraperBasedOnPage();
+      console.log(`[LinkedIn Recruiter] Received scraping request with max candidates: ${message.maxCandidates}. Routing...`);
+      routeScraperBasedOnPage(message.maxCandidates);
       sendResponse({ status: 'success' });
       return true;
     }
@@ -29,11 +30,11 @@ if (!window.linkedinScraperListenerRegistered) {
   });
 }
 
-function routeScraperBasedOnPage() {
+function routeScraperBasedOnPage(maxCandidates) {
   if (isOnLinkedInProfilePage()) {
     scrapeLinkedInProfile();
   } else if (isOnLinkedInListPage()) {
-    scrapeListOfProfiles();
+    scrapeListOfProfiles(maxCandidates);
   } else {
     console.warn("[LinkedIn] Page non supportée pour le scraping.");
   }
@@ -219,9 +220,12 @@ async function maybeSendData(scrapedData) {
 /**
  * Orchestre le scraping d'une liste de profils.
  */
-async function scrapeListOfProfiles() {
+async function scrapeListOfProfiles(maxCandidates = 25) {
+  console.log(`[LinkedIn Recruiter] Starting list scraping with a max of ${maxCandidates} candidates...`);
   let pageNumber = 1;
-  while (true) {
+  let processedCount = 0;
+
+  while (processedCount < maxCandidates) {
     console.log(`[LinkedIn Recruiter] Processing page ${pageNumber}...`);
     await prepareForListScraping();
     const candidateLinks = getCandidateListLinks();
@@ -232,13 +236,19 @@ async function scrapeListOfProfiles() {
     }
 
     console.log(`[LinkedIn Recruiter] ${candidateLinks.length} candidats détectés on page ${pageNumber}.`);
-    await processCandidateList(candidateLinks);
+    const newlyProcessedCount = await processCandidateList(candidateLinks, processedCount, maxCandidates);
+    processedCount += newlyProcessedCount;
+
+    if (processedCount >= maxCandidates) {
+      console.log(`[LinkedIn Recruiter] Reached user limit of ${maxCandidates}. Stopping.`);
+      break;
+    }
 
     const nextButton = document.querySelector('a[data-test-pagination-next]');
     const isDisabled = nextButton?.getAttribute('aria-disabled') === 'true';
 
     if (!nextButton || isDisabled) {
-      console.log("[LinkedIn Recruiter] No more pages to scrape. Scraping finished.");
+      console.log("[LinkedIn Recruiter] No more pages to scrape.");
       break;
     }
 
@@ -247,7 +257,9 @@ async function scrapeListOfProfiles() {
     await waitForNextPageLoad();
     pageNumber++;
   }
-  console.log("[LinkedIn Recruiter] Scraping of all pages is complete.");
+  console.log(
+    `[LinkedIn Recruiter] Scraping of all pages is complete. Processed ${processedCount} candidates.`
+  );
 }
 
 /**
@@ -265,14 +277,21 @@ async function prepareForListScraping() {
  * Itère sur la liste des liens de candidats et traite chaque profil.
  * @param {Array<Element>} links - Les éléments <a> des candidats.
  */
-async function processCandidateList(links) {
+async function processCandidateList(links, processedCount, maxCandidates) {
+  let newlyProcessedCount = 0;
   for (let i = 0; i < links.length; i++) {
+    if (processedCount + newlyProcessedCount >= maxCandidates) {
+      console.log(`[LinkedIn Recruiter] Limit of ${maxCandidates} reached during page processing.`);
+      break;
+    }
     while (window.isScrapingPaused) {
       await delay(1000); // Wait 1 second before checking again
     }
-    await processSingleCandidateFromList(links[i], i + 1);
+    await processSingleCandidateFromList(links[i], processedCount + newlyProcessedCount + 1);
+    newlyProcessedCount++;
     await delay(getRandomInRange(500, 3100));
   }
+  return newlyProcessedCount;
 }
 
 /**
