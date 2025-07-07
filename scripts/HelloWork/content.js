@@ -170,10 +170,31 @@ function createAndStoreScrapeState(urls) {
  */
 async function scrapeHwList() {
   console.log('[HelloWork] Starting list scraping...');
-  await fastScrollToTop();
-  const candidateUrls = await scrollToBottomAndCollectLinks();
-  if (candidateUrls.length === 0) {
-    return console.warn('[HelloWork] No candidate links found on the list page.');
+
+  // 1. Find the shadowRoot where cards live. This is the key insight you provided!
+  const resultList = document.querySelector("#result-list");
+  const shadowRoot = resultList?.shadowRoot;
+  const cardSelector = "article > div.result-items.virtualizer > applicant-card";
+
+  // 2. Find visible cards within the shadowRoot.
+  const visibleCards = shadowRoot ? getStrictlyVisibleElements(cardSelector, shadowRoot) : [];
+
+  let candidateUrls;
+
+  if (visibleCards.length > 0) {
+    console.log(`[HelloWork] Found ${visibleCards.length} visible candidate(s). Starting scrape from current position.`);
+    // scrollToBottomAndCollectLinks() starts from the current scroll position and proceeds downwards.
+    // This correctly implements the desired behavior of starting from what the user sees.
+    candidateUrls = await scrollToBottomAndCollectLinks();
+  } else {
+    // No candidates in view, so do the normal routine.
+    console.log('[HelloWork] No visible candidates. Starting from the top.');
+    await fastScrollToTop();
+    candidateUrls = await scrollToBottomAndCollectLinks();
+  }
+
+  if (!candidateUrls || candidateUrls.length === 0) {
+    return console.warn('[HelloWork] No candidate links found.');
   }
 
   const state = createAndStoreScrapeState(candidateUrls);
@@ -186,6 +207,22 @@ function getShowMoreButton() {
   if (!resultList?.shadowRoot) return null;
   return resultList.shadowRoot.querySelector("article > div.pagination > hw-button");
 }
+
+/**
+ * Extracts links from a pre-filtered list of candidate cards.
+ */
+async function collectLinksFromCards(cards) {
+  const urls = new Set();
+  for (const card of cards) {
+    const link = findLinkInCard(card);
+    if (link) {
+      const baseUrl = link.split('?')[0]; // Normalize URL
+      urls.add(baseUrl);
+    }
+  }
+  return Array.from(urls);
+}
+
 
 /**
  * Tries to find and click the "Show More" button. Returns true if clicked.
@@ -281,15 +318,22 @@ async function scrollToBottomAndCollectLinks() {
   logTargetCount(totalCandidates);
 
   while (true) {
+    // 1. Collect links from currently visible cards.
+    // This is done on each iteration to capture newly loaded cards.
+    getLinksFromVisibleCards().forEach(link => allLinks.add(link));
+
+    // 2. Check if we have met the target or finished scrolling.
     if (hasCollectedAll(allLinks, totalCandidates)) {
       break;
     }
     
-    const { shouldBreak } = await executeScrollCycle(allLinks);
+    // 3. Try to load more content (scroll or click button).
+    const { shouldBreak } = await executeScrollCycle();
     if (shouldBreak) break;
   }
 
-  collectLinksFromVisibleCards(allLinks);
+  // A final collection to ensure no cards are missed after the last action.
+  getLinksFromVisibleCards().forEach(link => allLinks.add(link));
   logFinalCount(allLinks);
   return Array.from(allLinks);
 }
@@ -321,9 +365,7 @@ function logFinalCount(allLinks) {
  * and attempts to scroll or click "show more".
  * @returns {Promise<{shouldBreak: boolean, newIdleCycles: number}>}
  */
-async function executeScrollCycle(allLinks) {
-  collectLinksFromVisibleCards(allLinks);
-
+async function executeScrollCycle() {
   if (await clickShowMoreButton()) {
     return { shouldBreak: false };
   }
@@ -353,24 +395,41 @@ function findLinkInCard(card) {
 }
 
 /**
- * Finds all visible candidate cards and extracts the profile link by traversing
- * from a stable anchor element within each card's shadow DOM.
- * @param {Set<string>} allLinks - A Set to which the found URLs will be added.
+ * Finds all rendered candidate cards and extracts their profile links.
+ * @returns {Set<string>} A Set containing the URLs of visible candidate profiles.
  */
-function collectLinksFromVisibleCards(allLinks) {
+function getLinksFromVisibleCards() {
+  const urls = new Set();
   const resultList = document.querySelector("#result-list");
-  if (!resultList?.shadowRoot) return;
+  if (!resultList?.shadowRoot) return urls;
 
   const cards = resultList.shadowRoot.querySelectorAll("article > div.result-items.virtualizer > applicant-card");
   for (const card of cards) {
-    const link = findLinkInCard(card);
-    if (link) {
-      // Normalize the URL by removing query parameters to prevent adding
-      // the same profile multiple times due to different tracking IDs.
-      const baseUrl = link.split('?')[0];
-      allLinks.add(baseUrl);
+    const rect = card.getBoundingClientRect();
+    // A card is a candidate for scraping if its bottom edge is below the top of the viewport.
+    // This correctly ignores cards that have been fully scrolled past.
+    if (rect.bottom > 0) {
+      const link = findLinkInCard(card);
+      if (link) {
+        const baseUrl = link.split('?')[0];
+        urls.add(baseUrl);
+      }
     }
   }
+  return urls;
+}
+
+/**
+ * Retrieves elements that are strictly visible within the viewport.
+ * This function checks if an element is at least partially within the viewport's bounds.
+ */
+function getStrictlyVisibleElements(selector, root = document) {
+  // Query within the provided root (e.g., a shadowRoot) instead of the whole document.
+  const elements = Array.from(root.querySelectorAll(selector));
+  return elements.filter(el => {
+    const rect = el.getBoundingClientRect();
+    return (rect.bottom > 0 && rect.top < window.innerHeight);
+  });
 }
 
 /**
