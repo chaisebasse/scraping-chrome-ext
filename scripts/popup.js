@@ -12,18 +12,37 @@ document.addEventListener("DOMContentLoaded", () => {
     const hwButton = document.getElementById("runHwBtn");
     const linkedInButton = document.getElementById("choixRecrBtn");
 
+    // Get radio buttons to pre-select them based on the URL context
+    const sourceAnnonce = document.getElementById("sourceAnnonce");
+    const sourceChasse = document.getElementById("sourceChasse");
+
     // Hide all by default
     mpButton.style.display = "none";
     hwButton.style.display = "none";
     linkedInButton.style.display = "none";
 
-    // Show the relevant button
+    // Reset radio buttons to ensure a clean state on each popup open
+    sourceAnnonce.checked = false;
+    sourceChasse.checked = false;
+
+    // Show the relevant button and pre-select the source type based on URL
     if (url.includes("s-tom-1:90/MeilleurPilotage")) {
       mpButton.style.display = "block";
     } else if (url.includes("app-recruteur.hellowork.com")) {
       hwButton.style.display = "block";
+      // Hellowork: "Annonce" for campaign or applicant detail pages
+      if (url.includes("campaign/detail") || url.includes("applicant/detail")) {
+        sourceAnnonce.checked = true;
+      }
     } else if (url.includes("linkedin.com/talent/")) {
       linkedInButton.style.display = "block";
+      // LinkedIn: "Annonce" for applicant discovery from a job
+      if (url.includes("discover/applicants")) {
+        sourceAnnonce.checked = true;
+      // LinkedIn: "Chasse" for general profile management or projects
+      } else if (url.includes("manage/all")) {
+        sourceChasse.checked = true;
+      }
     }
   }
 
@@ -246,6 +265,7 @@ document.addEventListener("DOMContentLoaded", () => {
  
       // Read the value from the input and ensure it's a valid number.
       const maxCandidates = parseInt(maxCandidatesInput.value, 10) || 50;
+      const sourceType = document.querySelector('input[name="sourceType"]:checked')?.value || null;
  
       const isHelloworkScraper = scriptPath.startsWith("scripts/HelloWork/");
       // Only reload if starting a scrape from a single candidate's detail page.
@@ -279,7 +299,7 @@ document.addEventListener("DOMContentLoaded", () => {
           ],
         });
 
-        chrome.tabs.sendMessage(tab.id, { action: messageAction, maxCandidates }, (response) => {
+        chrome.tabs.sendMessage(tab.id, { action: messageAction, maxCandidates, sourceType }, (response) => {
           if (chrome.runtime.lastError) {
             console.error("Erreur lors de l'envoi du message :", chrome.runtime.lastError.message);
           }

@@ -118,6 +118,17 @@
       <label for="recrAssocInput">Recherche Associée</label>
       <input type="text" id="recrAssocInput" list="recrAssocList" placeholder="Tapez pour rechercher...">
       <datalist id="recrAssocList"></datalist>
+      <label>Origine du candidat</label>
+      <div style="margin-bottom: 12px; display: flex; gap: 15px;">
+        <span>
+          <input type="radio" id="sourceAnnonce" name="sourceType" value="annonce">
+          <label for="sourceAnnonce" style="display: inline; font-weight: normal;">Annonce</label>
+        </span>
+        <span>
+          <input type="radio" id="sourceChasse" name="sourceType" value="chasse">
+          <label for="sourceChasse" style="display: inline; font-weight: normal;">Chasse</label>
+        </span>
+      </div>
       <label for="maxCandidatesInput">Nombre max de candidats</label>
       <input type="number" id="maxCandidatesInput" min="2" max="100">
       <button id="runWithJobIdBtn">Démarrer récolte données</button>

@@ -15,8 +15,8 @@ if (!window.linkedinScraperListenerRegistered) {
   window.linkedinScraperListenerRegistered = true;
   chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     if (message.action === "runLinkedinScraper") {
-      console.log(`[LinkedIn Recruiter] Received scraping request with max candidates: ${message.maxCandidates}. Routing...`);
-      routeScraperBasedOnPage(message.maxCandidates);
+      console.log(`[LinkedIn Recruiter] Received scraping request with max candidates: ${message.maxCandidates}, source type: ${message.sourceType}. Routing...`);
+      routeScraperBasedOnPage(message.maxCandidates, message.sourceType);
       sendResponse({ status: 'success' });
       return true;
     }
@@ -30,13 +30,13 @@ if (!window.linkedinScraperListenerRegistered) {
   });
 }
 
-function routeScraperBasedOnPage(maxCandidates) {
+function routeScraperBasedOnPage(maxCandidates, sourceType) {
   if (isOnLinkedInProfilePage()) {
-    scrapeLinkedInProfile();
+    scrapeLinkedInProfile(sourceType);
   } else if (isOnLinkedInListPage()) {
-    scrapeListOfProfiles(maxCandidates);
+    scrapeListOfProfiles(maxCandidates, sourceType);
   } else {
-    console.warn("[LinkedIn] Page non supportée pour le scraping.");
+    alert('[LinkedIn Recruiter] Page non supportée pour le scraping.');
   }
 }
 
@@ -54,7 +54,8 @@ function isOnLinkedInProfilePage() {
  * @returns {boolean}
  */
 function isOnLinkedInListPage() {
-  return location.href.startsWith("https://www.linkedin.com/talent/hire/") &&
+  return location.href.startsWith("https://www.linkedin.com/talent/hire/") && 
+         location.href.includes("/manage/all") &&
          !location.href.includes("/profile/");
 }
 
@@ -62,7 +63,7 @@ function isOnLinkedInListPage() {
  * Extrait les données de profil ainsi que les pièces jointes.
  * @returns {Promise<Object>}
  */
-async function extractProfileDataWithAttachments() {
+async function extractProfileDataWithAttachments(sourceType) {
   const { firstName, lastName } = extractNameFromNoteButton();
   const profileTab = await waitForElement('[data-live-test-profile-index-tab]');
   const attachmentsTab = await waitForElement('[data-live-test-profile-attachments-tab]');
@@ -78,6 +79,7 @@ async function extractProfileDataWithAttachments() {
     lastName,
     ...contactInfo,
     source: 'linkedin',
+    sourceType: sourceType,
     profileUrl: location.href // Use the current Recruiter URL for direct navigation
   };
 
@@ -192,12 +194,12 @@ function handleBackgroundResponse(response, resolve, reject) {
 /**
  * Lance le scraping automatique si on est sur une fiche candidat.
  */
-async function scrapeLinkedInProfile() {
+async function scrapeLinkedInProfile(sourceType) {
   if (!isOnLinkedInProfilePage()) return;
   console.log("[LinkedIn Recruiter] Scraper lancé");
   
   try {
-    const scrapedData = await extractProfileDataWithAttachments();
+    const scrapedData = await extractProfileDataWithAttachments(sourceType);
     await addAttachmentCount(scrapedData);
     return await maybeSendData(scrapedData);
   } catch (error) {
@@ -220,8 +222,8 @@ async function maybeSendData(scrapedData) {
 /**
  * Orchestre le scraping d'une liste de profils.
  */
-async function scrapeListOfProfiles(maxCandidates = 25) {
-  console.log(`[LinkedIn Recruiter] Starting list scraping with a max of ${maxCandidates} candidates...`);
+async function scrapeListOfProfiles(maxCandidates = 25, sourceType = null) {
+  console.log(`[LinkedIn Recruiter] Starting list scraping with a max of ${maxCandidates} candidates and source type '${sourceType || 'Non spécifié'}'...`);
   let pageNumber = 1;
   let processedCount = 0;
 
@@ -236,7 +238,7 @@ async function scrapeListOfProfiles(maxCandidates = 25) {
     }
 
     console.log(`[LinkedIn Recruiter] ${candidateLinks.length} candidats détectés on page ${pageNumber}.`);
-    const newlyProcessedCount = await processCandidateList(candidateLinks, processedCount, maxCandidates);
+    const newlyProcessedCount = await processCandidateList(candidateLinks, processedCount, maxCandidates, sourceType);
     processedCount += newlyProcessedCount;
 
     if (processedCount >= maxCandidates) {
@@ -277,7 +279,7 @@ async function prepareForListScraping() {
  * Itère sur la liste des liens de candidats et traite chaque profil.
  * @param {Array<Element>} links - Les éléments <a> des candidats.
  */
-async function processCandidateList(links, processedCount, maxCandidates) {
+async function processCandidateList(links, processedCount, maxCandidates, sourceType) {
   let newlyProcessedCount = 0;
   for (let i = 0; i < links.length; i++) {
     if (processedCount + newlyProcessedCount >= maxCandidates) {
@@ -287,7 +289,7 @@ async function processCandidateList(links, processedCount, maxCandidates) {
     while (window.isScrapingPaused) {
       await delay(1000); // Wait 1 second before checking again
     }
-    await processSingleCandidateFromList(links[i], processedCount + newlyProcessedCount + 1);
+    await processSingleCandidateFromList(links[i], processedCount + newlyProcessedCount + 1, sourceType);
     newlyProcessedCount++;
     await delay(getRandomInRange(500, 3100));
   }
@@ -299,10 +301,10 @@ async function processCandidateList(links, processedCount, maxCandidates) {
  * @param {Element} link - L'élément <a> du candidat.
  * @param {number} index - L'index du candidat dans la liste (pour le logging).
  */
-async function processSingleCandidateFromList(link, index) {
+async function processSingleCandidateFromList(link, index, sourceType) {
   try {
     await openProfileFromList(link);
-    const result = await scrapeLinkedInProfile();
+    const result = await scrapeLinkedInProfile(sourceType);
     logScrapingResult(result, index);
     await closeProfile();
     console.log(`[LinkedIn Recruiter] Profil ${index} traité.`);

@@ -62,8 +62,8 @@ function updateScrapeState(action) {
 function setupMessageListener() {
   chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     if (message.action === "runHwScraper") {
-      console.log(`[HelloWork] Received scraping request with max candidates: ${message.maxCandidates}. Routing...`);
-      routeScraperBasedOnPage(message.maxCandidates);
+      console.log(`[HelloWork] Received scraping request with max candidates: ${message.maxCandidates}, source type: ${message.sourceType}. Routing...`);
+      routeScraperBasedOnPage(message.maxCandidates, message.sourceType);
       sendResponse({ status: 'success', from: 'hellowork' });
       return true;
     }
@@ -106,13 +106,13 @@ function checkAndContinueListScrape() {
 /**
  * Determines which scraping function to call based on the current page URL.
  */
-function routeScraperBasedOnPage(maxCandidates) {
+function routeScraperBasedOnPage(maxCandidates, sourceType) {
   if (isOnHwProfilePage()) {
-    scrapeHwProfile();
+    scrapeHwProfile(sourceType);
   } else if (isOnHwListPage()) {
-    scrapeHwList(maxCandidates);
+    scrapeHwList(maxCandidates, sourceType);
   } else {
-    console.warn("[HelloWork] Page non supportée pour le scraping.");
+    alert('[HelloWork] Page non supportée pour le scraping.');
   }
 }
 
@@ -133,13 +133,18 @@ function isOnHwListPage() {
 
 // --- Scraping Logic ---
 
-async function scrapeHwProfile() {
+async function scrapeHwProfile(sourceType) {
   if (!isOnHwProfilePage()) return;
   console.log("[Hellowork] Scraper lancé");
   
+  // If part of a list scrape, get sourceType from state.
+  // This handles page navigations during a list scrape.
+  const state = JSON.parse(sessionStorage.getItem('hwListScrapeState'));
+  const finalSourceType = sourceType ?? state?.sourceType;
+
   try {
     await awaitPdfViewerReady();
-    const scrapedData = await formatScrapedData();
+    const scrapedData = await formatScrapedData(finalSourceType);
     console.log("[Hellowork] Données extraites :", scrapedData);
     if (scrapedData.firstName && scrapedData.lastName) {
       await sendScrapedDataToBackground(scrapedData);
@@ -152,13 +157,14 @@ async function scrapeHwProfile() {
 /**
  * Creates and stores the initial state for a list scrape in sessionStorage.
  */
-function createAndStoreScrapeState(urls) {
+function createAndStoreScrapeState(urls, sourceType) {
   const state = {
     inProgress: true,
     isPaused: false,
     urls: urls,
     currentIndex: 0,
-    returnUrl: window.location.href
+    returnUrl: window.location.href,
+    sourceType: sourceType
   };
   sessionStorage.setItem('hwListScrapeState', JSON.stringify(state));
   return state;
@@ -168,8 +174,8 @@ function createAndStoreScrapeState(urls) {
  * Initiates the scraping of a list of candidates.
  * It gathers all profile links, saves the state, and navigates to the first profile.
  */
-async function scrapeHwList(maxCandidates = 50) {
-  console.log(`[HelloWork] Starting list scraping with a max of ${maxCandidates} candidates...`);
+async function scrapeHwList(maxCandidates = 50, sourceType = null) {
+  console.log(`[HelloWork] Starting list scraping with a max of ${maxCandidates} candidates and source type '${sourceType || 'Non spécifié'}'...`);
 
   // 1. Find the shadowRoot where cards live. This is the key insight you provided!
   const resultList = document.querySelector("#result-list");
@@ -199,7 +205,7 @@ async function scrapeHwList(maxCandidates = 50) {
 
   // Apply the final limit to the collected URLs before saving the state.
   const limitedUrls = candidateUrls.slice(0, maxCandidates);
-  const state = createAndStoreScrapeState(limitedUrls);
+  const state = createAndStoreScrapeState(limitedUrls, sourceType);
   console.log(`[HelloWork] Stored state for ${state.urls.length} candidates. Navigating...`);
   window.location.href = state.urls[0];
 }
@@ -533,7 +539,7 @@ function parseNameFromTitle(title) {
   return null;
 }
 
-async function formatScrapedData() {
+async function formatScrapedData(sourceType) {
   const { firstName, lastName } = await extractProfileName();
   const { email, phone } = await extractProfileData();
   return {
@@ -542,6 +548,7 @@ async function formatScrapedData() {
     email: email || `${firstName}_${lastName}@hellowork.com`,
     phone,
     source: 'hellowork',
+    sourceType: sourceType,
     attachmentCount: 1,
     profileUrl: location.href
   };

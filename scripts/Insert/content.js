@@ -73,6 +73,19 @@ function fillFormFields(scrapedData) {
 
       // Statically set the candidate status to "A traiter" (value 2) for every candidate.
       populateInput("MP:ID_STAT", "2");
+
+      // Dynamically set the candidate origin based on source and sourceType.
+      const originMapping = {
+        linkedin: { annonce: '4', chasse: '11' },
+        hellowork: { annonce: '17', chasse: '14' }
+      };
+      const { source, sourceType } = scrapedData;
+      const originCvValue = originMapping[source]?.[sourceType];
+
+      if (originCvValue) {
+        console.log(`[MP Insert] Setting 'Origine CV' to value: ${originCvValue} for source: ${source}/${sourceType}`);
+        populateInput("MP:ID_ORIG_CV", originCvValue);
+      }
     })
     .catch((error) => {
       console.error("Could not get job ID:", error);
