@@ -67,6 +67,7 @@ document.addEventListener("DOMContentLoaded", () => {
   const jobInput = document.getElementById("recrAssocInput");
   const jobDatalist = document.getElementById("recrAssocList");
   const maxCandidatesInput = document.getElementById("maxCandidatesInput");
+  const maxCandidatesLabel = document.querySelector('label[for="maxCandidatesInput"]');
   let jobLabelToIdMap = {};
   // This variable will hold the value of the input right before a change,
   // which helps us determine the direction of a click on the stepper arrows.
@@ -315,8 +316,14 @@ document.addEventListener("DOMContentLoaded", () => {
     injectAndSend("scripts/MP/content.js", "runMPScraper");
   });
 
+  async function showScraperOptions(isProfilePage) {
+    maxCandidatesInput.style.display = isProfilePage ? 'none' : 'block';
+    maxCandidatesLabel.style.display = isProfilePage ? 'none' : 'block';
+    showPage(choixRecherche, mainPage);
+  }
+
   // Bouton pour Hellowork - Affiche la page de sélection du Job ID
-  runHwButton.addEventListener("click", () => {
+  runHwButton.addEventListener("click", async () => {
     pendingScraperAction = {
       scriptPath: "scripts/HelloWork/content.js",
       messageAction: "runHwScraper"
@@ -326,11 +333,14 @@ document.addEventListener("DOMContentLoaded", () => {
     maxCandidatesInput.value = 50;
     maxCandidatesInput.setAttribute('data-custom-step', 'false');
     maxCandidatesInput.step = 1;
-    showPage(choixRecherche, mainPage);
+
+    const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
+    const isProfilePage = tab?.url?.includes("app-recruteur.hellowork.com/applicant/detail/");
+    showScraperOptions(isProfilePage);
   });
 
   // Bouton pour LinkedIn - Affiche la page de sélection du Job ID
-  choixRecrBtn.addEventListener("click", () => {
+  choixRecrBtn.addEventListener("click", async () => {
     pendingScraperAction = {
       scriptPath: "scripts/LinkedIn/content.js",
       messageAction: "runLinkedinScraper"
@@ -340,7 +350,10 @@ document.addEventListener("DOMContentLoaded", () => {
     maxCandidatesInput.value = 25;
     maxCandidatesInput.setAttribute('data-custom-step', 'true');
     maxCandidatesInput.step = 1; // A step of 1 is crucial for the 'input' event logic to detect stepper clicks.
-    showPage(choixRecherche, mainPage);
+
+    const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
+    const isProfilePage = tab?.url?.includes("/manage/all/profile/");
+    showScraperOptions(isProfilePage);
   });
 
   // Bouton pour démarrer le scraping (LinkedIn ou Hellowork) après le choix
