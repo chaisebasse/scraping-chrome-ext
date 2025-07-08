@@ -19,6 +19,9 @@ if (!window.linkedinScraperListenerRegistered) {
       routeScraperBasedOnPage(message.maxCandidates, message.sourceType);
       sendResponse({ status: 'success' });
       return true;
+    } else if (message.action === 'login_required') {
+      alert("Connexion à MeilleurPilotage requise. Veuillez vous connecter à MP puis relancer le scraper.");
+      return true;
     }
   });
 
@@ -187,7 +190,9 @@ function handleBackgroundResponse(response, resolve, reject) {
     console.error("Message failed:", chrome.runtime.lastError.message);
     return reject(chrome.runtime.lastError);
   }
-  if (response?.status === "success") return resolve(response);
+  if (response?.status === "success" || response?.status === "login_required") {
+    return resolve(response);
+  }
   reject(new Error(response?.message || "Unknown error from background"));
 }
 
@@ -238,8 +243,14 @@ async function scrapeListOfProfiles(maxCandidates = 25, sourceType = null) {
     }
 
     console.log(`[LinkedIn Recruiter] ${candidateLinks.length} candidats détectés on page ${pageNumber}.`);
-    const newlyProcessedCount = await processCandidateList(candidateLinks, processedCount, maxCandidates, sourceType);
-    processedCount += newlyProcessedCount;
+    const { newlyProcessed, stop } = await processCandidateList(candidateLinks, processedCount, maxCandidates, sourceType);
+    processedCount += newlyProcessed;
+
+    if (stop) {
+      console.log('[LinkedIn Recruiter] Halting due to login requirement.');
+      alert("Connexion à MeilleurPilotage requise. Le scraping de la liste est arrêté.");
+      break;
+    }
 
     if (processedCount >= maxCandidates) {
       console.log(`[LinkedIn Recruiter] Reached user limit of ${maxCandidates}. Stopping.`);
@@ -289,11 +300,15 @@ async function processCandidateList(links, processedCount, maxCandidates, source
     while (window.isScrapingPaused) {
       await delay(1000); // Wait 1 second before checking again
     }
-    await processSingleCandidateFromList(links[i], processedCount + newlyProcessedCount + 1, sourceType);
+    const result = await processSingleCandidateFromList(links[i], processedCount + newlyProcessedCount + 1, sourceType);
+    if (result?.status === 'login_required') {
+      console.log('[LinkedIn Recruiter] Login required. Stopping list scrape.');
+      return { newlyProcessed: newlyProcessedCount, stop: true };
+    }
     newlyProcessedCount++;
     await delay(getRandomInRange(500, 3100));
   }
-  return newlyProcessedCount;
+  return { newlyProcessed: newlyProcessedCount, stop: false };
 }
 
 /**
@@ -308,8 +323,10 @@ async function processSingleCandidateFromList(link, index, sourceType) {
     logScrapingResult(result, index);
     await closeProfile();
     console.log(`[LinkedIn Recruiter] Profil ${index} traité.`);
+    return result;
   } catch (e) {
     console.warn(`[LinkedIn Recruiter] Erreur pour le candidat ${index} :`, e);
+    return { status: 'error', message: e.message };
   }
 }
 
@@ -335,7 +352,7 @@ async function waitForNextPageLoad(timeout = 15000) {
   const firstCandidateElement = document.querySelector('ol[data-test-paginated-list] li');
   if (!firstCandidateElement) {
     // If there's no list, maybe it's just loading. Wait a bit.
-    await delay(3000);
+    await delay(1000);
     return;
   }
 
@@ -359,7 +376,7 @@ async function waitForNextPageLoad(timeout = 15000) {
 function logScrapingResult(result, index) {
   if (result?.status === 'success') {
     console.log(`[LinkedIn Recruiter] Candidat ${index} envoyé avec succès`);
-  } else {
+  } else if (result?.status !== 'login_required') {
     console.warn(`[LinkedIn Recruiter] Candidat ${index} non envoyé correctement`);
   }
 }

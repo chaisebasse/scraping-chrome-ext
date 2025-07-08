@@ -66,6 +66,9 @@ function setupMessageListener() {
       routeScraperBasedOnPage(message.maxCandidates, message.sourceType);
       sendResponse({ status: 'success', from: 'hellowork' });
       return true;
+    } else if (message.action === 'login_required') {
+      alert("Connexion à MeilleurPilotage requise. Veuillez vous connecter à MP puis relancer le scraper.");
+      return true;
     }
   });
 }
@@ -86,20 +89,33 @@ function handleProfilePageContinuation(state) {
 /**
  * If returning to the list page after a scrape, cleans up the state.
  */
-function handleListPageReturn(state) {
-  if (window.location.href === state.returnUrl) {
+async function handleListPageReturn(state) {
+  // Compare URLs without query parameters for robustness.
+  if (window.location.href.split('?')[0] === state.returnUrl.split('?')[0]) {
+    // Check for a specific stop reason before clearing the state.
+    if (state.stopReason === 'login_required') {
+      try {
+        // Wait for the main list component to be stable before showing the alert
+        // to prevent it from disappearing during page load.
+        await waitForElement(".filters.filters-columns.filters-min-width", 3000);
+        await delay(1500);
+        alert("Connexion à MeilleurPilotage requise. Le scraping de la liste a été arrêté.");
+      } catch (e) {
+        console.warn("[HelloWork] Could not show login alert because #result-list was not found.", e.message);
+      }
+    }
     console.log('[HelloWork] Returned to list page. Clearing scraping state.');
     sessionStorage.removeItem('hwListScrapeState');
   }
 }
 
-function checkAndContinueListScrape() {
+async function checkAndContinueListScrape() {
   const state = JSON.parse(sessionStorage.getItem('hwListScrapeState'));
   if (!state) return;
 
   if (isOnHwProfilePage()) handleProfilePageContinuation(state);
   else if (isOnHwListPage()) {
-    handleListPageReturn(state);
+    await handleListPageReturn(state);
   }
 }
 
@@ -136,7 +152,7 @@ function isOnHwListPage() {
 async function scrapeHwProfile(sourceType) {
   if (!isOnHwProfilePage()) return;
   console.log("[Hellowork] Scraper lancé");
-  
+
   // If part of a list scrape, get sourceType from state.
   // This handles page navigations during a list scrape.
   const state = JSON.parse(sessionStorage.getItem('hwListScrapeState'));
@@ -147,10 +163,14 @@ async function scrapeHwProfile(sourceType) {
     const scrapedData = await formatScrapedData(finalSourceType);
     console.log("[Hellowork] Données extraites :", scrapedData);
     if (scrapedData.firstName && scrapedData.lastName) {
-      await sendScrapedDataToBackground(scrapedData);
+      return await sendScrapedDataToBackground(scrapedData);
     }
+    // If no data to send (e.g., missing name), consider it a success for list scraping purposes
+    // to avoid breaking the loop on a single bad profile.
+    return { status: 'success' };
   } catch (error) {
     console.error("[Hellowork] Échec du scraping :", error.message || error);
+    return { status: 'error', message: error.message };
   }
 }
 
@@ -471,9 +491,20 @@ function returnToListPage(state) {
 }
 
 async function processProfilePageInListScrape() {
-  await scrapeHwProfile();
+  const result = await scrapeHwProfile();
 
   let currentState = JSON.parse(sessionStorage.getItem('hwListScrapeState'));
+
+  // If login is required, we need to stop the whole process.
+  if (result?.status === 'login_required') {
+    console.log('[HelloWork] Login required, halting list scrape.');
+    // By setting inProgress to false, the next check will stop everything.
+    currentState.inProgress = false;
+    currentState.stopReason = 'login_required';
+    // We still need to save this state change.
+    sessionStorage.setItem('hwListScrapeState', JSON.stringify(currentState));
+  }
+
   if (wasScrapingStopped(currentState)) return;
 
   // Pause check loop
@@ -504,7 +535,7 @@ function handleBackgroundResponse(response, resolve, reject) {
     console.error("[HelloWork] Message to background failed:", chrome.runtime.lastError.message);
     return reject(new Error(chrome.runtime.lastError.message));
   }
-  if (response?.status === "success") {
+  if (response?.status === "success" || response?.status === "login_required") {
     console.log("[HelloWork] Background script confirmed data receipt.");
     resolve(response);
   } else {
