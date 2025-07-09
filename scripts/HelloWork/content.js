@@ -1,12 +1,10 @@
 /**
- * @fileoverview Content script for Hellowork.
- * Scrapes candidate data from profile and list pages, formatting it
- * consistently with other sources like LinkedIn.
+ * @fileoverview Script de contenu pour Hellowork.
+ * Scrape les données des candidats depuis les pages de profil et de liste.
  */
 
 /**
- * Main initialization function for the Hellowork content script.
- * Sets up listeners and checks for ongoing scraping processes.
+ * Fonction d'initialisation principale pour le script de contenu Hellowork.
  */
 function initializeHwContentScript() {
   window.hwScraperListenerRegistered = true;
@@ -17,68 +15,130 @@ function initializeHwContentScript() {
 }
 
 /**
- * Sets up keyboard shortcuts (Ctrl+Alt+S to stop, Ctrl+Alt+P to pause/resume).
+ * Gère les événements de raccourcis clavier (Ctrl+Alt+S/P).
+ * @param {KeyboardEvent} event The keyboard event.
  */
-function setupShortcutListeners() {
-  document.addEventListener('keydown', (event) => {
-    if (event.ctrlKey && event.altKey) {
-      if (event.key.toLowerCase() === 's') {
-        event.preventDefault();
-        updateScrapeState('stop');
-      } else if (event.key.toLowerCase() === 'p') {
-        event.preventDefault();
-        updateScrapeState('togglePause');
-      }
+function handleShortcut(event) {
+  if (event.ctrlKey && event.altKey) {
+    const key = event.key.toLowerCase();
+    if (key === 's' || key === 'p') {
+      event.preventDefault();
+      updateScrapeState(key === 's' ? 'stop' : 'togglePause');
     }
-  });
+  }
 }
 
 /**
- * Updates the scraping state in sessionStorage for pausing or stopping.
- * @param {'togglePause' | 'stop'} action - The action to perform.
+ * Met en place un écouteur pour les raccourcis clavier.
  */
-function updateScrapeState(action) {
-  const state = JSON.parse(sessionStorage.getItem('hwListScrapeState'));
-  if (!state?.inProgress) return;
+function setupShortcutListeners() {
+  document.addEventListener('keydown', handleShortcut);
+}
 
-  if (action === 'togglePause') {
-    state.isPaused = !state.isPaused;
-    const message = state.isPaused ? 'Scraping PAUSED' : 'Scraping RESUMED';
-    const color = state.isPaused ? 'orange' : 'green';
-    console.log(`%c[HelloWork] ${message}. Press Ctrl+Alt+P to toggle.`, `color: ${color}; font-weight: bold;`);
-    alert(`${message}. Press Ctrl+Alt+P to toggle.`);
-  } else if (action === 'stop') {
-    state.inProgress = false;
-    console.log('[HelloWork] Stop command received. Halting scraping process.');
-    alert(`Le scraping de la liste Hellowork s'arrêtera après le candidat actuel.`);
+/**
+ * Récupère l'état actuel du scraping depuis sessionStorage.
+ * @returns {object | null} L'objet d'état parsé ou null.
+ */
+function getScrapeState() {
+  const stateString = sessionStorage.getItem('hwListScrapeState');
+  if (!stateString) return null;
+  try {
+    return JSON.parse(stateString);
+  } catch (e) {
+    console.error("[HelloWork] Failed to parse scrape state:", e);
+    return null;
   }
+}
 
+/**
+ * Sauvegarde l'état du scraping dans sessionStorage.
+ * @param {object} state L'objet d'état à sauvegarder.
+ */
+function saveScrapeState(state) {
   sessionStorage.setItem('hwListScrapeState', JSON.stringify(state));
 }
 
 /**
- * Sets up a listener for messages from the extension popup (e.g., to start scraping).
+ * Bascule l'état de pause du scraping et affiche une alerte.
+ * @param {object} state L'état actuel du scraping.
+ */
+function togglePauseState(state) {
+  state.isPaused = !state.isPaused;
+  const message = state.isPaused ? 'Scraping PAUSED' : 'Scraping RESUMED';
+  const color = state.isPaused ? 'orange' : 'green';
+  console.log(`%c[HelloWork] ${message}. Press Ctrl+Alt+P to toggle.`, `color: ${color}; font-weight: bold;`);
+  alert(`${message}. Press Ctrl+Alt+P to toggle.`);
+}
+
+/**
+ * Arrête le processus de scraping et affiche une alerte.
+ * @param {object} state L'état actuel du scraping.
+ */
+function stopScrapingState(state) {
+  state.inProgress = false;
+  console.log('[HelloWork] Stop command received. Halting scraping process.');
+  alert(`Le scraping de la liste Hellowork s'arrêtera après le candidat actuel.`);
+}
+
+/**
+ * Met à jour l'état du scraping dans sessionStorage pour la pause ou l'arrêt.
+ * @param {'togglePause' | 'stop'} action - L'action à executr.
+ */
+function updateScrapeState(action) {
+  const state = getScrapeState();
+  if (!state?.inProgress) return;
+
+  if (action === 'togglePause') {
+    togglePauseState(state);
+  } else if (action === 'stop') {
+    stopScrapingState(state);
+  }
+
+  saveScrapeState(state);
+}
+
+/**
+ * Gère la réception du message pour lancer le scraper.
+ * @param {object} message Le message reçu de l'extension.
+ * @param {function} sendResponse La fonction pour répondre à l'extension.
+ * @returns {boolean} True pour indiquer une réponse asynchrone.
+ */
+function handleRunScraperMessage(message, sendResponse) {
+  console.log(`[HelloWork] Received request: ${message.action}. Routing...`);
+  routeScraperBasedOnPage(message.maxCandidates, message.sourceType);
+  sendResponse({ status: 'success', from: 'hellowork' });
+  return true;
+}
+
+/**
+ * Affiche une alerte lorsque la connexion à MeilleurPilotage est requise.
+ * @returns {boolean} True pour indiquer une réponse asynchrone.
+ */
+function handleLoginRequiredMessage() {
+  alert("Connexion à MeilleurPilotage requise. Veuillez vous connecter à MP puis relancer le scraper.");
+  return true;
+}
+
+/**
+ * Met en place un écouteur pour les messages provenant de la popup de l'extension.
  */
 function setupMessageListener() {
-  chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
-    if (message.action === "runHwScraper") {
-      console.log(`[HelloWork] Received scraping request with max candidates: ${message.maxCandidates}, source type: ${message.sourceType}. Routing...`);
-      routeScraperBasedOnPage(message.maxCandidates, message.sourceType);
-      sendResponse({ status: 'success', from: 'hellowork' });
-      return true;
-    } else if (message.action === 'login_required') {
-      alert("Connexion à MeilleurPilotage requise. Veuillez vous connecter à MP puis relancer le scraper.");
-      return true;
-    }
+  chrome.runtime.onMessage.addListener((message, _, sendResponse) => {
+    if (message.action === "runHwScraper") return handleRunScraperMessage(message, sendResponse);
+    if (message.action === 'login_required') return handleLoginRequiredMessage();
   });
 }
 
+/**
+ * S'assure que le script de contenu est initialisé une seule fois.
+ */
 if (!window.hwScraperListenerRegistered) {
   initializeHwContentScript();
 }
 
 /**
- * If on a profile page during a list scrape, continues the process.
+ * Si sur une page de profil pendant un scraping de liste, continue le processus.
+ * @param {object} state L'état actuel du scraping.
  */
 function handleProfilePageContinuation(state) {
   if (state.inProgress) {
@@ -87,30 +147,39 @@ function handleProfilePageContinuation(state) {
 }
 
 /**
- * If returning to the list page after a scrape, cleans up the state.
+ * Affiche une alerte de connexion requise après avoir attendu que la page soit stable.
+ */
+async function showLoginAlertAfterWait() {
+  try {
+    // Attend qu'un élément clé soit stable avant d'afficher l'alerte.
+    await waitForElement(".filters.filters-columns.filters-min-width", 3000);
+    await delay(1500);
+    alert("Connexion à MeilleurPilotage requise. Le scraping de la liste a été arrêté.");
+  } catch (e) {
+    console.warn("[HelloWork] Impossible d'afficher l'alerte de connexion:", e.message);
+  }
+}
+
+/**
+ * Si de retour sur la page de liste après un scraping, nettoie l'état.
+ * @param {object} state L'état actuel du scraping.
  */
 async function handleListPageReturn(state) {
-  // Compare URLs without query parameters for robustness.
+  // Compare URLs sans paramètres de requête pour la robustesse.
   if (window.location.href.split('?')[0] === state.returnUrl.split('?')[0]) {
-    // Check for a specific stop reason before clearing the state.
     if (state.stopReason === 'login_required') {
-      try {
-        // Wait for the main list component to be stable before showing the alert
-        // to prevent it from disappearing during page load.
-        await waitForElement(".filters.filters-columns.filters-min-width", 3000);
-        await delay(1500);
-        alert("Connexion à MeilleurPilotage requise. Le scraping de la liste a été arrêté.");
-      } catch (e) {
-        console.warn("[HelloWork] Could not show login alert because #result-list was not found.", e.message);
-      }
+      await showLoginAlertAfterWait();
     }
     console.log('[HelloWork] Returned to list page. Clearing scraping state.');
     sessionStorage.removeItem('hwListScrapeState');
   }
 }
 
+/**
+ * Vérifie s'il y a un scraping de liste en cours et le continue si nécessaire.
+ */
 async function checkAndContinueListScrape() {
-  const state = JSON.parse(sessionStorage.getItem('hwListScrapeState'));
+  const state = getScrapeState();
   if (!state) return;
 
   if (isOnHwProfilePage()) handleProfilePageContinuation(state);
@@ -120,19 +189,33 @@ async function checkAndContinueListScrape() {
 }
 
 /**
- * Determines which scraping function to call based on the current page URL.
+ * Détermine le type de la page actuelle (profil, liste, ou non supportée).
+ * @returns {string} Le type de page.
+ */
+function getPageType() {
+  if (isOnHwProfilePage()) return 'profile';
+  if (isOnHwListPage()) return 'list';
+  return 'unsupported';
+}
+
+/**
+ * Détermine quelle fonction de scraping appeler en fonction de l'URL de la page actuelle.
+ * @param {number} maxCandidates Le nombre maximum de candidats à scraper.
+ * @param {string} sourceType L'origine des candidats (annonce, chasse).
  */
 function routeScraperBasedOnPage(maxCandidates, sourceType) {
-  if (isOnHwProfilePage()) {
-    scrapeHwProfile(sourceType);
-  } else if (isOnHwListPage()) {
-    scrapeHwList(maxCandidates, sourceType);
+  const pageType = getPageType();
+  const scraperActions = {
+    'profile': () => scrapeHwProfile(sourceType),
+    'list': () => scrapeHwList(maxCandidates, sourceType),
+  };
+
+  if (scraperActions[pageType]) {
+    scraperActions[pageType]();
   } else {
     alert('[HelloWork] Page non supportée pour le scraping.');
   }
 }
-
-// --- URL Checkers (You will need to implement the logic) ---
 
 /**
  * Vérifie si la page actuelle est une fiche candidat Hellowork Recruiter.
@@ -142,31 +225,39 @@ function isOnHwProfilePage() {
   return location.href.startsWith("https://app-recruteur.hellowork.com/applicant/detail/");
 }
 
+/**
+ * Vérifie si la page actuelle est une page de liste de candidats Hellowork.
+ * @returns {boolean}
+ */
 function isOnHwListPage() {
   return location.href.startsWith("https://app-recruteur.hellowork.com/campaign/detail/") &&
          location.href.includes("searchGuid=");
 }
 
-// --- Scraping Logic ---
+/**
+ * Détermine le type de source pour un profil, en se basant sur l'état de scraping si disponible.
+ * @param {string} initialSourceType Le type de source initial.
+ * @returns {string} Le type de source final.
+ */
+function getSourceTypeForProfile(initialSourceType) {
+  const state = getScrapeState();
+  return initialSourceType ?? state?.sourceType;
+}
 
-async function scrapeHwProfile(sourceType) {
-  if (!isOnHwProfilePage()) return;
-  console.log("[Hellowork] Scraper lancé");
-
-  // If part of a list scrape, get sourceType from state.
-  // This handles page navigations during a list scrape.
-  const state = JSON.parse(sessionStorage.getItem('hwListScrapeState'));
-  const finalSourceType = sourceType ?? state?.sourceType;
-
+/**
+ * Extrait les données du profil, les formate et les envoie au background script.
+ * @param {string} sourceType L'origine du candidat.
+ * @returns {Promise<object>} La réponse du background script.
+ */
+async function scrapeAndSendData(sourceType) {
   try {
     await awaitPdfViewerReady();
-    const scrapedData = await formatScrapedData(finalSourceType);
+    const scrapedData = await formatScrapedData(sourceType);
     console.log("[Hellowork] Données extraites :", scrapedData);
+
     if (scrapedData.firstName && scrapedData.lastName) {
       return await sendScrapedDataToBackground(scrapedData);
     }
-    // If no data to send (e.g., missing name), consider it a success for list scraping purposes
-    // to avoid breaking the loop on a single bad profile.
     return { status: 'success' };
   } catch (error) {
     console.error("[Hellowork] Échec du scraping :", error.message || error);
@@ -175,7 +266,22 @@ async function scrapeHwProfile(sourceType) {
 }
 
 /**
- * Creates and stores the initial state for a list scrape in sessionStorage.
+ * Lance le scraping d'un profil Hellowork individuel.
+ * @param {string} sourceType L'origine du candidat.
+ */
+async function scrapeHwProfile(sourceType) {
+  if (!isOnHwProfilePage()) return;
+  console.log("[Hellowork] Scraper lancé");
+
+  const finalSourceType = getSourceTypeForProfile(sourceType);
+  return await scrapeAndSendData(finalSourceType);
+}
+
+/**
+ * Crée et stocke l'état initial pour un scraping de liste dans sessionStorage.
+ * @param {string[]} urls La liste des URLs des profils à scraper.
+ * @param {string} sourceType L'origine des candidats.
+ * @returns {object} L'état de scraping créé.
  */
 function createAndStoreScrapeState(urls, sourceType) {
   const state = {
@@ -186,50 +292,36 @@ function createAndStoreScrapeState(urls, sourceType) {
     returnUrl: window.location.href,
     sourceType: sourceType
   };
-  sessionStorage.setItem('hwListScrapeState', JSON.stringify(state));
+  saveScrapeState(state);
   return state;
 }
 
 /**
- * Initiates the scraping of a list of candidates.
- * It gathers all profile links, saves the state, and navigates to the first profile.
+ * Collecte les URLs des profils de candidats sur la page de liste en scrollant si nécessaire.
+ * @param {number} maxCandidates Le nombre maximum de liens à collecter.
+ * @returns {Promise<string[]>} Une liste d'URLs de profils.
  */
-async function scrapeHwList(maxCandidates = 50, sourceType = null) {
-  console.log(`[HelloWork] Starting list scraping with a max of ${maxCandidates} candidates and source type '${sourceType || 'Non spécifié'}'...`);
-
-  // 1. Find the shadowRoot where cards live. This is the key insight you provided!
+async function collectCandidateUrls(maxCandidates) {
   const resultList = document.querySelector("#result-list");
   const shadowRoot = resultList?.shadowRoot;
   const cardSelector = "article > div.result-items.virtualizer > applicant-card";
 
-  // 2. Find visible cards within the shadowRoot.
   const visibleCards = shadowRoot ? getStrictlyVisibleElements(cardSelector, shadowRoot) : [];
 
-  let candidateUrls;
-
   if (visibleCards.length > 0) {
-    console.log(`[HelloWork] Found ${visibleCards.length} visible candidate(s). Starting scrape from current position.`);
-    // scrollToBottomAndCollectLinks() starts from the current scroll position and proceeds downwards.
-    // This correctly implements the desired behavior of starting from what the user sees.
-    candidateUrls = await scrollToBottomAndCollectLinks(maxCandidates);
+    console.log(`[HelloWork] Found ${visibleCards.length} visible candidates. Starting from current position.`);
+    return await scrollToBottomAndCollectLinks(maxCandidates);
   } else {
-    // No candidates in view, so do the normal routine.
     console.log('[HelloWork] No visible candidates. Starting from the top.');
     await fastScrollToTop();
-    candidateUrls = await scrollToBottomAndCollectLinks(maxCandidates);
+    return await scrollToBottomAndCollectLinks(maxCandidates);
   }
-
-  if (!candidateUrls || candidateUrls.length === 0) {
-    return console.warn('[HelloWork] No candidate links found.');
-  }
-
-  // Apply the final limit to the collected URLs before saving the state.
-  const limitedUrls = candidateUrls.slice(0, maxCandidates);
-  const state = createAndStoreScrapeState(limitedUrls, sourceType);
-  console.log(`[HelloWork] Stored state for ${state.urls.length} candidates. Navigating...`);
-  window.location.href = state.urls[0];
 }
 
+/**
+ * Récupère le bouton "Afficher les candidats suivants" depuis le shadow DOM.
+ * @returns {HTMLElement|null} Le bouton ou null s'il n'est pas trouvé.
+ */
 function getShowMoreButton() {
   const resultList = document.querySelector("#result-list");
   if (!resultList?.shadowRoot) return null;
@@ -237,23 +329,8 @@ function getShowMoreButton() {
 }
 
 /**
- * Extracts links from a pre-filtered list of candidate cards.
- */
-async function collectLinksFromCards(cards) {
-  const urls = new Set();
-  for (const card of cards) {
-    const link = findLinkInCard(card);
-    if (link) {
-      const baseUrl = link.split('?')[0]; // Normalize URL
-      urls.add(baseUrl);
-    }
-  }
-  return Array.from(urls);
-}
-
-
-/**
- * Tries to find and click the "Show More" button. Returns true if clicked.
+ * Tente de trouver et de cliquer sur le bouton "Afficher les candidats suivants".
+ * @returns {Promise<boolean>} True si le bouton a été cliqué, sinon false.
  */
 async function clickShowMoreButton() {
   const showMoreButton = getShowMoreButton();
@@ -265,6 +342,9 @@ async function clickShowMoreButton() {
   return true;
 }
 
+/**
+ * Fait défiler la page rapidement vers le haut.
+ */
 async function fastScrollToTop() {
   return new Promise(resolve => {
     window.scrollTo({ top: 0, behavior: "auto" });
@@ -273,7 +353,7 @@ async function fastScrollToTop() {
 }
 
 /**
- * Vérifie si le scroll a atteint le bas de la page.
+ * Vérifie si le défilement a atteint le bas de la page.
  * @returns {boolean}
  */
 function isAtPageBottom() {
@@ -284,45 +364,73 @@ function isAtPageBottom() {
 }
 
 /**
- * Performs a series of small scrolls to simulate smooth, human-like scrolling.
- * @param {number} count - The number of small scrolls to perform.
+ * Vérifie si le défilement est bloqué en bas de la page.
+ * @param {number} previousScrollY La position de défilement verticale précédente.
+ * @returns {boolean} True si le défilement est bloqué.
  */
-async function performMiniScrolls(count) {
-    for (let i = 0; i < count; i++) {
-        const scrollFraction = getRandomInRange(20, 30) / 100;
-        window.scrollBy(0, window.innerHeight * scrollFraction);
-        await delay(getRandomInRange(50, 150));
-    }
-}
-
-/**
- * Performs a human-like scroll cycle and returns whether the bottom has been reached.
- * @returns {Promise<boolean>} - True if the bottom of the page is reached.
- */
-async function performScroll() {
-  const previousScrollY = window.scrollY;
-
-  // Perform a burst of small, random scrolls to appear more human.
-  // This will perform 3-7 small scrolls, each moving 5-20% of the screen,
-  // resulting in a human-like scroll gesture.
-  const miniScrollCount = getRandomInRange(3, 10);
-  await performMiniScrolls(miniScrollCount);
-
-  // A longer pause after the scroll burst, like a human reading.
-  await delay(getRandomInRange(300, 1200));
-
-  // Check if we are at the bottom.
-  // The second condition handles cases where the scroll didn't move, meaning we're stuck at the bottom.
+function isStuckAtBottom(previousScrollY) {
   const atBottom = isAtPageBottom() || window.scrollY === previousScrollY;
   if (atBottom) {
-    console.log("[HelloWork] Reached bottom of the page.");
+    console.log("[HelloWork] Reached bottom of the page or scroll is stuck.");
   }
   return atBottom;
 }
 
 /**
- * Gets the total number of candidates from the result list element's 'nbresult' attribute.
- * @returns {number|null} The total number of candidates, or null if not found or invalid.
+ * Initialise la navigation pour un scraping de liste en sauvegardant l'état et en allant vers la première URL.
+ * @param {string[]} urls La liste des URLs des profils.
+ * @param {string} sourceType L'origine des candidats.
+ */
+function initiateListScrapeNavigation(urls, sourceType) {
+  if (!urls || urls.length === 0) {
+    return console.warn('[HelloWork] No candidate links found to start navigation.');
+  }
+  const state = createAndStoreScrapeState(urls, sourceType);
+  console.log(`[HelloWork] Stored state for ${state.urls.length} candidates. Navigating...`);
+  window.location.href = state.urls[0];
+}
+
+/**
+ * Lance le scraping d'une liste de candidats.
+ * Rassemble tous les liens de profils, sauvegarde l'état, et navigue vers le premier profil.
+ * @param {number} [maxCandidates=50] Le nombre maximum de candidats à scraper.
+ * @param {string|null} [sourceType=null] L'origine des candidats.
+ */
+async function scrapeHwList(maxCandidates = 50, sourceType = null) {
+  console.log(`[HelloWork] Starting list scraping with a max of ${maxCandidates} candidates and source type '${sourceType || 'Non spécifié'}'...`);
+  const candidateUrls = await collectCandidateUrls(maxCandidates);
+  initiateListScrapeNavigation(candidateUrls, sourceType);
+}
+
+/**
+ * Effectue une série de petits défilements pour simuler un scroll fluide et humain.
+ * @param {number} count Le nombre de petits défilements à effectuer.
+ */
+async function performMiniScrolls(count) {
+  for (let i = 0; i < count; i++) {
+    const scrollFraction = getRandomInRange(20, 30) / 100;
+    window.scrollBy(0, window.innerHeight * scrollFraction);
+    await delay(getRandomInRange(50, 150));
+  }
+}
+
+/**
+ * Effectue un cycle de défilement de type humain et retourne si le bas de la page a été atteint.
+ * @returns {Promise<boolean>} True si le bas de la page est atteint.
+ */
+async function performScroll() {
+  const previousScrollY = window.scrollY;
+  const miniScrollCount = getRandomInRange(3, 10);
+  await performMiniScrolls(miniScrollCount);
+
+  // Une pause plus longue après la rafale de défilement, comme un humain qui lit.
+  await delay(getRandomInRange(300, 1200));
+  return isStuckAtBottom(previousScrollY);
+}
+
+/**
+ * Récupère le nombre total de candidats à partir de l'attribut 'nbresult' de la liste de résultats.
+ * @returns {number|null} Le nombre total de candidats, ou null si non trouvé ou invalide.
  */
 function getTotalCandidateCount() {
   const resultList = document.querySelector("applicant-result#result-list");
@@ -338,34 +446,49 @@ function getTotalCandidateCount() {
   return count;
 }
 
+/**
+ * Collecte les liens des fiches candidats actuellement visibles à l'écran.
+ * @param {Set<string>} linkSet Le Set où ajouter les liens collectés.
+ */
+function collectVisibleLinks(linkSet) {
+  getLinksFromVisibleCards().forEach(link => linkSet.add(link));
+}
+
+/**
+ * Fait défiler la page jusqu'en bas pour collecter tous les liens de profils de candidats.
+ * @param {number} maxCandidates Le nombre maximum de liens à collecter.
+ */
 async function scrollToBottomAndCollectLinks(maxCandidates) {
   console.log("[HelloWork] Scrolling to collect all candidate links...");
   const allLinks = new Set();
   const totalCandidates = getTotalCandidateCount();
-
   logTargetCount(totalCandidates, maxCandidates);
+  let lastClickCount = 0; // Suivre quand nous avons cliqué sur "Afficher plus" pour la dernière fois.
+  const clickThreshold = 15; // Cliquer tous les 15 nouveaux candidats.
 
   while (true) {
-    // 1. Collect links from currently visible cards.
-    // This is done on each iteration to capture newly loaded cards.
-    getLinksFromVisibleCards().forEach(link => allLinks.add(link));
-
-    // 2. Check if we have met the target or finished scrolling.
+    collectVisibleLinks(allLinks);
     if (hasCollectedAll(allLinks, totalCandidates, maxCandidates)) {
       break;
     }
-    
-    // 3. Try to load more content (scroll or click button).
-    const { shouldBreak } = await executeScrollCycle();
+
+    const { shouldBreak, clicked } = await executeScrollCycle(allLinks, lastClickCount, clickThreshold);
+    if (clicked) {
+      lastClickCount = allLinks.size; // Mettre à jour le compteur au dernier clic.
+    }
     if (shouldBreak) break;
   }
 
-  // A final collection to ensure no cards are missed after the last action.
-  getLinksFromVisibleCards().forEach(link => allLinks.add(link));
-  logFinalCount(allLinks);
-  return Array.from(allLinks);
+  const finalLinks = Array.from(allLinks).slice(0, maxCandidates);
+  logFinalCount({ size: finalLinks.length });
+  return finalLinks;
 }
 
+/**
+ * Affiche dans la console le nombre de candidats ciblés.
+ * @param {number|null} total Le nombre total de candidats sur la page.
+ * @param {number} maxCandidates La limite définie par l'utilisateur.
+ */
 function logTargetCount(total, maxCandidates) {
   if (total !== null) {
     console.log(`[HelloWork] Page has ${total} candidates. User limit is ${maxCandidates}.`);
@@ -374,47 +497,84 @@ function logTargetCount(total, maxCandidates) {
   }
 }
 
-function hasCollectedAll(allLinks, total, maxCandidates) {
-  if (allLinks.size >= maxCandidates) {
-    console.log(
-      `[HelloWork] Collected ${allLinks.size} links, reaching user limit of ${maxCandidates}.`
-    );
-    return true;
-  }
-  if (total !== null && allLinks.size >= total) {
-    console.log(
-      `[HelloWork] Collected ${allLinks.size} links, meeting page total of ${total}.`
-    );
+/**
+ * Vérifie si la limite de candidats définie par l'utilisateur a été atteinte.
+ * @param {Set<string>} links Le Set des liens collectés.
+ * @param {number} max La limite maximale.
+ */
+function hasReachedUserLimit(links, max) {
+  if (links.size >= max) {
+    console.log(`[HelloWork] Collected ${links.size} links, reaching user limit of ${max}.`);
     return true;
   }
   return false;
 }
 
-function logFinalCount(allLinks) {
+/**
+ * Vérifie si le nombre total de candidats de la page a été atteint.
+ * @param {Set<string>} links Le Set des liens collectés.
+ * @param {number|null} total Le nombre total de candidats sur la page.
+ */
+function hasReachedPageTotal(links, total) {
+  if (total !== null && links.size >= total) {
+    console.log(`[HelloWork] Collected ${links.size} links, meeting page total of ${total}.`);
+    return true;
+  }
+  return false;
+}
+
+/**
+ * Vérifie si la collecte de liens doit s'arrêter.
+ * @param {Set<string>} allLinks Le Set de tous les liens collectés.
+ * @param {number|null} total Le nombre total de candidats sur la page.
+ * @param {number} maxCandidates La limite définie par l'utilisateur.
+ */
+function hasCollectedAll(allLinks, total, maxCandidates) {
+  return hasReachedUserLimit(allLinks, maxCandidates) || hasReachedPageTotal(allLinks, total);
+}
+
+/**
+ * Affiche le décompte final des liens collectés dans la console.
+ */
+function logFinalCount(linksCollection) {
   console.log(
-    `[HelloWork] Finished scrolling. Collected ${allLinks.size} unique links.`
+    `[HelloWork] Finished scrolling. Collected ${linksCollection.size} unique links.`
   );
 }
 
 /**
- * Executes one cycle of the scroll loop: collects links, updates idle state,
- * and attempts to scroll or click "show more".
- * @returns {Promise<{shouldBreak: boolean, newIdleCycles: number}>}
+ * Exécute un cycle de la boucle de défilement/clic.
+ * Priorise le clic sur "Afficher plus" tous les 15 candidats, sinon fait défiler.
+ * @param {Set<string>} allLinks Le Set de tous les liens collectés.
+ * @param {number} lastClickCount Le nombre de liens collectés lors du dernier clic.
+ * @param {number} clickThreshold Le seuil pour déclencher un clic.
  */
-async function executeScrollCycle() {
-  if (await clickShowMoreButton()) {
-    return { shouldBreak: false };
+async function executeScrollCycle(allLinks, lastClickCount, clickThreshold) {
+  // Stratégie 1: Si nous avons collecté assez de nouveaux liens, cliquer sur "Afficher plus".
+  if (allLinks.size > 0 && allLinks.size >= lastClickCount + clickThreshold) {
+    const clicked = await clickShowMoreButton();
+    if (clicked) {
+      await delay(1000); // Attendre le chargement du nouveau contenu après le clic.
+      return { shouldBreak: false, clicked: true };
+    }
   }
 
-  if (await performScroll()) {
-    return { shouldBreak: true };
+  // Stratégie 2: Si aucun clic n'était nécessaire, faire défiler pour trouver plus de candidats.
+  const isAtBottom = await performScroll();
+
+  if (isAtBottom) {
+    // Si en bas, notre seul espoir est de cliquer sur le bouton. Si impossible, c'est terminé.
+    const clicked = await clickShowMoreButton();
+    return { shouldBreak: !clicked, clicked: false };
   }
 
-  return { shouldBreak: false };
+  // Si nous ne sommes pas en bas, nous pouvons continuer à faire défiler.
+  return { shouldBreak: false, clicked: false };
 }
 
 /**
- * Finds the profile link within a single candidate card's shadow DOM.
+ * Trouve le lien du profil à l'intérieur du shadow DOM d'une fiche candidat.
+ * @param {HTMLElement} card La fiche candidat.
  */
 function findLinkInCard(card) {
   if (!card.shadowRoot) return null;
@@ -430,25 +590,39 @@ function findLinkInCard(card) {
   return null;
 }
 
+
 /**
- * Finds all rendered candidate cards and extracts their profile links.
- * @returns {Set<string>} A Set containing the URLs of visible candidate profiles.
+ * Récupère toutes les fiches candidats depuis le shadow DOM de la liste de résultats.
+ */
+function getCandidateCardsFromShadowRoot() {
+  const resultList = document.querySelector("#result-list");
+  if (!resultList?.shadowRoot) return [];
+  return resultList.shadowRoot.querySelectorAll("article > div.result-items.virtualizer > applicant-card");
+}
+
+/**
+ * Vérifie si une fiche candidat est visible à l'écran.
+ * @param {HTMLElement} card La fiche candidat.
+ */
+function isCardVisible(card) {
+  const rect = card.getBoundingClientRect();
+  // Une fiche est candidate au scraping si son bord inférieur est sous le haut de la fenêtre.
+  return rect.bottom > 0;
+}
+
+/**
+ * Trouve toutes les fiches candidats rendues et extrait les liens de leurs profils.
+ * @returns {Set<string>} Un Set contenant les URLs des profils de candidats visibles.
  */
 function getLinksFromVisibleCards() {
   const urls = new Set();
-  const resultList = document.querySelector("#result-list");
-  if (!resultList?.shadowRoot) return urls;
+  const cards = getCandidateCardsFromShadowRoot();
 
-  const cards = resultList.shadowRoot.querySelectorAll("article > div.result-items.virtualizer > applicant-card");
   for (const card of cards) {
-    const rect = card.getBoundingClientRect();
-    // A card is a candidate for scraping if its bottom edge is below the top of the viewport.
-    // This correctly ignores cards that have been fully scrolled past.
-    if (rect.bottom > 0) {
+    if (isCardVisible(card)) {
       const link = findLinkInCard(card);
       if (link) {
-        const baseUrl = link.split('?')[0];
-        urls.add(baseUrl);
+        urls.add(link.split('?')[0]); // Normaliser l'URL
       }
     }
   }
@@ -456,11 +630,13 @@ function getLinksFromVisibleCards() {
 }
 
 /**
- * Retrieves elements that are strictly visible within the viewport.
- * This function checks if an element is at least partially within the viewport's bounds.
+ * Récupère les éléments qui sont strictement visibles dans la fenêtre d'affichage.
+ * Cette fonction vérifie si un élément est au moins partiellement dans les limites de la fenêtre.
+ * @param {string} selector Le sélecteur CSS de l'élément cible.
+ * @param {Document|ShadowRoot} [root=document] La racine DOM dans laquelle chercher.
+ * @returns {Element[]} Un tableau des éléments visibles.
  */
 function getStrictlyVisibleElements(selector, root = document) {
-  // Query within the provided root (e.g., a shadowRoot) instead of the whole document.
   const elements = Array.from(root.querySelectorAll(selector));
   return elements.filter(el => {
     const rect = el.getBoundingClientRect();
@@ -469,8 +645,9 @@ function getStrictlyVisibleElements(selector, root = document) {
 }
 
 /**
- * Checks if the scraping process was stopped by the user and navigates back if so.
- * @returns {boolean} - True if the process was stopped, otherwise false.
+ * Vérifie si le processus de scraping a été arrêté par l'utilisateur et navigue en arrière si c'est le cas.
+ * @param {object} currentState L'état actuel du scraping.
+ * @returns {boolean} True si le processus a été arrêté, sinon false.
  */
 function wasScrapingStopped(currentState) {
   if (currentState?.inProgress) return false;
@@ -483,58 +660,56 @@ function wasScrapingStopped(currentState) {
 }
 
 /**
- * Navigates back to the original list page when scraping is complete.
+ * Gère le cas où une connexion est requise pendant un scraping de liste.
+ * @param {object} state L'état actuel du scraping.
  */
-function returnToListPage(state) {
-  console.log('[HelloWork] List scraping complete. Returning to list page.');
-  window.location.href = state.returnUrl;
-}
-
-async function processProfilePageInListScrape() {
-  const result = await scrapeHwProfile();
-
-  let currentState = JSON.parse(sessionStorage.getItem('hwListScrapeState'));
-
-  // If login is required, we need to stop the whole process.
-  if (result?.status === 'login_required') {
-    console.log('[HelloWork] Login required, halting list scrape.');
-    // By setting inProgress to false, the next check will stop everything.
-    currentState.inProgress = false;
-    currentState.stopReason = 'login_required';
-    // We still need to save this state change.
-    sessionStorage.setItem('hwListScrapeState', JSON.stringify(currentState));
-  }
-
-  if (wasScrapingStopped(currentState)) return;
-
-  // Pause check loop
-  while (currentState.isPaused) {
-    console.log("[HelloWork] Scraping is paused. Checking again in 2 seconds...");
-    await delay(2000);
-    currentState = JSON.parse(sessionStorage.getItem('hwListScrapeState'));
-    // Also check if it was stopped while paused
-    if (wasScrapingStopped(currentState)) return;
-  }
-
-  const nextIndex = currentState.currentIndex + 1;
-  if (nextIndex < currentState.urls.length) {
-    const newState = { ...currentState, currentIndex: nextIndex };
-    sessionStorage.setItem('hwListScrapeState', JSON.stringify(newState));
-    console.log(`[HelloWork] Navigating to next profile, index ${nextIndex}.`);
-    window.location.href = newState.urls[nextIndex];
-  } else {
-    returnToListPage(currentState);
-  }
+function handleLoginRequiredInList(state) {
+  console.log('[HelloWork] Login required, halting list scrape.');
+  state.inProgress = false;
+  state.stopReason = 'login_required';
+  saveScrapeState(state);
 }
 
 /**
- * Handles the response from the background script after sending data.
+ * Attend que l'état de pause soit levé, en vérifiant périodiquement.
+ * @param {object} initialState L'état initial lors de l'appel.
+ * @returns {Promise<object|null>} L'état non-pausé, ou null si le scraping a été arrêté.
+ */
+async function waitForUnpause(initialState) {
+  let currentState = initialState;
+  while (currentState.isPaused) {
+    console.log("[HelloWork] Scraping is paused. Checking again in 2 seconds...");
+    await delay(2000);
+    currentState = getScrapeState();
+    if (wasScrapingStopped(currentState)) return null; // Signale que le processus a été arrêté
+  }
+  return currentState;
+}
+
+/**
+ * Met à jour l'état et navigue vers le profil suivant dans la liste.
+ * @param {object} state L'état actuel du scraping.
+ */
+function navigateToNextProfile(state) {
+  const nextIndex = state.currentIndex + 1;
+  const newState = { ...state, currentIndex: nextIndex };
+  saveScrapeState(newState);
+  console.log(`[HelloWork] Navigating to next profile, index ${nextIndex}.`);
+  window.location.href = newState.urls[nextIndex];
+}
+
+/**
+ * Gère la réponse du script d'arrière-plan après une tentative d'envoi de données.
+ * @param {object} response - La réponse reçue.
+ * @param {function} resolve - La fonction resolve de la promesse.
+ * @param {function} reject - La fonction reject de la promesse.
  */
 function handleBackgroundResponse(response, resolve, reject) {
   if (chrome.runtime.lastError) {
     console.error("[HelloWork] Message to background failed:", chrome.runtime.lastError.message);
     return reject(new Error(chrome.runtime.lastError.message));
   }
+
   if (response?.status === "success" || response?.status === "login_required") {
     console.log("[HelloWork] Background script confirmed data receipt.");
     resolve(response);
@@ -545,6 +720,11 @@ function handleBackgroundResponse(response, resolve, reject) {
   }
 }
 
+/**
+ * Envoie les données scrapées au background script.
+ * @param {object} data Les données du candidat à envoyer.
+ * @returns {Promise<object>} La réponse du background script.
+ */
 function sendScrapedDataToBackground(data) {
   return new Promise((resolve, reject) => {
     const message = { action: "send_candidate_data", scrapedData: data };
@@ -555,8 +735,9 @@ function sendScrapedDataToBackground(data) {
 }
 
 /**
- * Parses the first and last name from a formatted page title string.
- * @returns {{firstName: string, lastName: string}|null}
+ * Analyse le prénom et le nom à partir du titre formaté de la page.
+ * @param {string} title Le titre de la page.
+ * @returns {{firstName: string, lastName: string}|null} Un objet avec le prénom et le nom, ou null.
  */
 function parseNameFromTitle(title) {
   const nameRegex = /^(.+?)\s+(.+)\s+-/;
@@ -570,6 +751,11 @@ function parseNameFromTitle(title) {
   return null;
 }
 
+/**
+ * Formate les données extraites du profil dans un objet standardisé.
+ * @param {string} sourceType L'origine du candidat.
+ * @returns {Promise<object>} Un objet contenant les données formatées du candidat.
+ */
 async function formatScrapedData(sourceType) {
   const { firstName, lastName } = await extractProfileName();
   const { email, phone } = await extractProfileData();
@@ -585,6 +771,10 @@ async function formatScrapedData(sourceType) {
   };
 }
 
+/**
+ * Extrait le nom et le prénom du profil en se basant sur le titre de la page.
+ * @returns {Promise<{firstName: string, lastName: string}>}
+ */
 async function extractProfileName() {
   const timeout = 2000;
   const interval = 300;
@@ -599,18 +789,47 @@ async function extractProfileName() {
   throw new Error("Timeout: Le titre de la page n'a pas atteint le format attendu");
 }
 
-async function extractProfileData() {
+/**
+ * Extrait l'email du candidat en interagissant avec l'interface.
+ * @returns {Promise<string>} L'email extrait.
+ */
+async function extractEmail() {
   await clickApplicantDetail("#contactEmail");
   const emailElement = await waitForElementInsideShadow('#tools > contact-workflow', '#emailToApplicant');
   const email = (emailElement.getAttribute("to") || "").trim();
   await closeDetail();
+  return email;
+}
 
+/**
+ * Extrait le numéro de téléphone du candidat et le normalise.
+ * @returns {Promise<string|null>} Le numéro de téléphone normalisé ou null.
+ */
+async function extractPhone() {
   await clickApplicantDetail("hw-button#contactTel");
   const phoneElement = await waitForElement("tel-contact#telContact");
-  const phone = normalizeFrenchNumber(
+  return normalizeFrenchNumber(
     (phoneElement.getAttribute("tel") || "").trim()
   );
+}
+
+/**
+ * Extrait les données de contact (email et téléphone) du profil.
+ * @returns {Promise<{email: string, phone: string|null}>}
+ */
+async function extractProfileData() {
+  const email = await extractEmail();
+  const phone = await extractPhone();
   return { email, phone };
+}
+
+/**
+ * Navigue vers la page de liste d'origine une fois le scraping terminé.
+ * @param {object} state L'état actuel du scraping.
+ */
+function returnToListPage(state) {
+  console.log('[HelloWork] List scraping complete. Returning to list page.');
+  window.location.href = state.returnUrl;
 }
 
 function delay(ms) {
@@ -621,6 +840,10 @@ function getRandomInRange(min = 300, max = 1500) {
   return Math.floor(Math.random() * (max - min + 1)) + min;
 }
 
+/**
+ * Clique sur un bouton de détail du contact et attend que l'information apparaisse.
+ * @param {string} id L'ID du bouton à cliquer.
+ */
 async function clickApplicantDetail(id) {
   const button = await waitForElementInsideShadow('#tools > contact-workflow', `${id}`);
   clickRandomSpotInside(button);
@@ -633,6 +856,11 @@ async function clickApplicantDetail(id) {
   return true;
 }
 
+/**
+ * Normalise un numéro de téléphone français.
+ * @param {string} rawPhone Le numéro de téléphone brut.
+ * @returns {string|null} Le numéro normalisé (ex: 0612345678) ou null si invalide.
+ */
 function normalizeFrenchNumber(rawPhone) {
   if (!rawPhone) return null;
 
@@ -648,9 +876,31 @@ function normalizeFrenchNumber(rawPhone) {
 }
 
 /**
- * Waits for the nested PDF viewer component to be fully rendered.
- * This ensures the page is ready before scraping begins.
- * @param {number} [timeout=5000] - Timeout for the entire check.
+ * Gère le traitement d'une page de profil dans le cadre d'un scraping de liste.
+ * Scrape les données, gère la pause/l'arrêt, et navigue vers le profil suivant ou retourne à la liste.
+ */
+async function processProfilePageInListScrape() {
+  const result = await scrapeHwProfile();
+  let currentState = getScrapeState();
+  if (!currentState) return;
+  if (result?.status === 'login_required') {
+    handleLoginRequiredInList(currentState);
+  }
+
+  if (wasScrapingStopped(currentState)) return;
+  const unpausedState = await waitForUnpause(currentState);
+  if (!unpausedState) return;
+  if (unpausedState.currentIndex + 1 < unpausedState.urls.length) {
+    navigateToNextProfile(unpausedState);
+  } else {
+    returnToListPage(unpausedState);
+  }
+}
+
+/**
+ * Attend que le composant de visionneuse PDF soit entièrement rendu.
+ * Cela garantit que la page est prête avant le début du scraping.
+ * @param {number} [timeout=5000] Le temps d'attente maximum en millisecondes.
  */
 async function awaitPdfViewerReady(timeout = 5000) {
   console.log("[Hellowork] Waiting for PDF viewer to be ready...");
@@ -665,6 +915,12 @@ async function awaitPdfViewerReady(timeout = 5000) {
   console.log("[Hellowork] PDF viewer is ready.");
 }
 
+/**
+ * Attend qu'un élément apparaisse à l'intérieur d'un shadow DOM.
+ * @param {string} shadowHostSelector Le sélecteur de l'hôte du shadow DOM.
+ * @param {string} innerSelector Le sélecteur de l'élément à l'intérieur du shadow DOM.
+ * @param {number} [timeout=2000] Le temps d'attente maximum.
+ */
 function waitForElementInsideShadow(shadowHostSelector, innerSelector, timeout = 2000) {
   return new Promise((resolve, reject) => {
     const host = document.querySelector(shadowHostSelector);
@@ -673,6 +929,13 @@ function waitForElementInsideShadow(shadowHostSelector, innerSelector, timeout =
   });
 }
 
+/**
+ * Met en place un observateur pour détecter la disparition d'un élément.
+ * @param {Node} root La racine où observer.
+ * @param {string} selector Le sélecteur de l'élément.
+ * @param {function} resolve La fonction de résolution de la promesse.
+ * @param {function} reject La fonction de rejet de la promesse.
+ */
 function setupGoneObserver(root, selector, resolve, reject, timeout) {
   let timeoutId;
   const observer = new MutationObserver(() => {
@@ -689,6 +952,11 @@ function setupGoneObserver(root, selector, resolve, reject, timeout) {
   }, timeout);
 }
 
+/**
+ * Attend que l'élément disparaisse d'une racine DOM spécifique (ex: shadowRoot).
+ * @param {Node} root La racine où chercher.
+ * @param {string} selector Le sélecteur de l'élément.
+ */
 function waitForElementGoneInRoot(root, selector, timeout = 2000) {
   return new Promise((resolve, reject) => {
     if (!root.querySelector(selector)) return resolve();
@@ -696,10 +964,17 @@ function waitForElementGoneInRoot(root, selector, timeout = 2000) {
   });
 }
 
+/**
+ * Attend que l'élément disparaisse du document principal.
+ * @param {string} selector Le sélecteur de l'élément.
+ */
 function waitForElementGone(selector, timeout = 2000) {
   return waitForElementGoneInRoot(document.body, selector, timeout);
 }
 
+/**
+ * Gère la fermeture de la modale de contact après l'extraction des informations.
+ */
 async function closeDetail() {
   const contactWorkflow = await waitForElement("#tools > contact-workflow");
   if (!contactWorkflow.shadowRoot) throw new Error("contact-workflow shadowRoot not found.");
