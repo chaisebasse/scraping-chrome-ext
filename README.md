@@ -116,7 +116,7 @@ Le flux de gestion des erreurs est conçu pour être convivial et récupérable.
 #### Autres cas gérés
 
 - **Utilisateur non connecté à MeilleurPilotage :** Si l'extension tente d'ouvrir le formulaire de création de candidat et est redirigée vers la page de connexion de MP, le processus est interrompu. Le script d'arrière-plan (`backgroundInsert.js`) détecte cette redirection et envoie un message (`login_required`) au script du site source (LinkedIn ou HelloWork). Une alerte est alors affichée à l'utilisateur, l'invitant à se connecter avant de relancer le scraping. Le scraping de liste est également stoppé proprement.
-- **Aucune recherche d'emploi (Job ID) trouvée :** Lorsque l'utilisateur clique sur "Vous ne trouvez pas votre recherche ?" dans la popup, l'extension scrape la page de création de candidat sur MP pour récupérer la liste des recherches actives. Si le script (`jobScraper.js`) ne trouve aucune recherche active, la popup (`popup.js`) affiche une alerte informant l'utilisateur qu'aucune recherche n'a été trouvée.
+- **Aucune recherche d'emploi (Job ID) trouvée :** Lorsque l'utilisateur clique sur "Vous ne trouvez pas votre recherche ?" dans la popup, l'extension scrape la page de création de candidat sur MP pour récupérer la liste des recherches actives. Si le script (`content.js`) ne trouve aucune recherche active, la popup (`popup.js`) affiche une alerte informant l'utilisateur qu'aucune recherche n'a été trouvée.
 
 ---
 
@@ -137,8 +137,7 @@ Le flux de gestion des erreurs est conçu pour être convivial et récupérable.
 - **`scripts/HelloWork/`** : Scraper spécifique au site pour HelloWork.
   - `content.js` : Contient toute la logique pour trouver et extraire les données des pages HelloWork.
 - **`scripts/MP/`** : Scripts liés à MeilleurPilotage.
-  - `content.js` : Scrape la liste des recherches d'emploi actives.
-  - `jobScraper.js` : Script injecté pour extraire les ID des recherches depuis l'élément `<select>` du formulaire.
+  - `content.js` : Script injecté pour extraire les ID des recherches depuis l'élément `<select>` du formulaire.
 - **`scripts/common/`** : Scripts d'aide réutilisables.
   - `domUtils.js` : Fonctions essentielles comme `waitForElement` utilisées par plusieurs scrapers.
 

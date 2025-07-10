@@ -223,7 +223,7 @@ document.addEventListener("DOMContentLoaded", () => {
     try {
       await chrome.scripting.executeScript({
         target: { tabId: targetTab.id },
-        files: ["scripts/MP/jobScraper.js"],
+        files: ["scripts/MP/content.js"],
       });
 
       chrome.tabs.sendMessage(targetTab.id, { action: "get_job_ids" }, async (response) => {
@@ -310,11 +310,6 @@ document.addEventListener("DOMContentLoaded", () => {
       }
     });
   }
-
-  // Bouton pour MP
-  runMPButton.addEventListener("click", () => {
-    injectAndSend("scripts/MP/content.js", "runMPScraper");
-  });
 
   async function showScraperOptions(isProfilePage) {
     maxCandidatesInput.style.display = isProfilePage ? 'none' : 'block';

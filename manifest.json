@@ -86,7 +86,7 @@
         "scripts/common/HighlightHelper.js",
         "scripts/common/ScrollHelper.js",
         "scripts/common/Parameter.js",
-        "scripts/MP/jobScraper.js"
+        "scripts/MP/content.js"
       ],
       "matches": ["<all_urls>"]
     }
