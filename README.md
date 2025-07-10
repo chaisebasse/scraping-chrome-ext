@@ -2,7 +2,7 @@
 
 ## 1. Aperçu
 
-Cette extension Chrome automatise le processus d'extraction des données de candidats depuis des sites de recrutement et leur insertion dans notre système de gestion interne, MeilleurPilotage (MP).
+Cette extension Chrome automatise le processus d'extraction des données de candidats depuis des sites de recrutement et leur insertion dans MeilleurPilotage (MP).
 
 ### Fonctionnalités Clés
 
@@ -10,9 +10,23 @@ Cette extension Chrome automatise le processus d'extraction des données de cand
   - LinkedIn Recruiter (profils uniques et listes multi-pages).
   - HelloWork Recruteur (profils uniques et listes multi-pages).
 - **Capture Automatique des CV :** Intercepte et joint les CV (PDF) durant le processus de scraping.
-- **Remplissage Automatisé de Formulaire :** Ouvre le formulaire de création de candidat dans MeilleurPilotage et remplit toutes les données scrapées.
+- **Remplissage Automatisé de Formulaire :** Ouvre le formulaire de création de candidat dans MP et remplit toutes les données scrapées.
 - **Gestion Robuste des Erreurs :** Si une soumission échoue dans MP (ex: un candidat en double), l'erreur est capturée et affichée dans la popup de l'extension, permettant à l'utilisateur de trouver et corriger facilement le problème.
 - **Association aux Recherches :** Scrape les recherches d'emploi actives depuis MP pour associer correctement les nouveaux candidats au bon projet de recrutement.
+
+---
+
+## Installation
+
+Pour installer et utiliser l'extension en mode développeur, suivez ces étapes :
+
+1.  Cliquez sur l'icône en forme de pièce de puzzle en haut à droite de votre navigateur Chrome.
+2.  Dans le menu qui s'affiche, cliquez sur **"Gérer les extensions"**.
+3.  Sur la page des extensions, activez le **"Mode développeur"** à l'aide de la bascule en haut à droite.
+4.  Une nouvelle barre d'outils apparaît. Cliquez sur le bouton **"Charger l'extension non empaquetée"**.
+5.  Une fenêtre de l'explorateur de fichiers s'ouvrira. Naviguez jusqu'au dossier contenant les fichiers de cette extension, sélectionnez-le, puis cliquez sur "Sélectionner un dossier".
+6.  L'extension est maintenant installée. Vous pouvez fermer l'onglet des extensions.
+7.  Pour un accès facile, cliquez à nouveau sur l'icône de la pièce de puzzle, trouvez l'extension "Data extraction" dans la liste, et cliquez sur l'icône en forme d'**épingle** à côté de son nom. L'icône de l'extension sera désormais toujours visible dans votre barre d'outils.
 
 ---
 
