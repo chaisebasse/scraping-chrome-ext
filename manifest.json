@@ -82,12 +82,7 @@
 
   "web_accessible_resources": [
     {
-      "resources": [
-        "scripts/common/HighlightHelper.js",
-        "scripts/common/ScrollHelper.js",
-        "scripts/common/Parameter.js",
-        "scripts/MP/content.js"
-      ],
+      "resources": [ "scripts/MP/content.js" ],
       "matches": ["<all_urls>"]
     }
   ],

@@ -140,8 +140,6 @@ function wait(ms) {
  * @param {Object} payload - Les données du candidat à insérer.
  */
 function handleCandidateDataSubmission(payload) {
-  // Store context in sessionStorage before form submission.
-  // This allows the post-submission script to access it for error reporting.
   if (payload.profileUrl && payload.source) {
     const context = {
       profileUrl: payload.profileUrl,

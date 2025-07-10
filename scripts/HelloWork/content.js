@@ -45,7 +45,7 @@ function getScrapeState() {
   try {
     return JSON.parse(stateString);
   } catch (e) {
-    console.error("[HelloWork] Failed to parse scrape state:", e);
+    console.error("[HelloWork] Échec de l'analyse de l'état du scraping:", e);
     return null;
   }
 }
@@ -64,10 +64,10 @@ function saveScrapeState(state) {
  */
 function togglePauseState(state) {
   state.isPaused = !state.isPaused;
-  const message = state.isPaused ? 'Scraping PAUSED' : 'Scraping RESUMED';
+  const message = state.isPaused ? 'Scraping en PAUSE' : 'Scraping REDÉMARRÉ';
   const color = state.isPaused ? 'orange' : 'green';
-  console.log(`%c[HelloWork] ${message}. Press Ctrl+Alt+P to toggle.`, `color: ${color}; font-weight: bold;`);
-  alert(`${message}. Press Ctrl+Alt+P to toggle.`);
+  console.log(`%c[HelloWork] ${message}. Cliquer Ctrl+Alt+P pour mettre en pause/continuer.`, `color: ${color}; font-weight: bold;`);
+  alert(`${message}. Cliquer Ctrl+Alt+P pour mettre en pause/continuer.`);
 }
 
 /**
@@ -76,7 +76,7 @@ function togglePauseState(state) {
  */
 function stopScrapingState(state) {
   state.inProgress = false;
-  console.log('[HelloWork] Stop command received. Halting scraping process.');
+  console.log("[HelloWork] Commande d'arrêt reçue. Arrêt du processus de scraping.");
   alert(`Le scraping de la liste Hellowork s'arrêtera après le candidat actuel.`);
 }
 
@@ -170,7 +170,7 @@ async function handleListPageReturn(state) {
     if (state.stopReason === 'login_required') {
       await showLoginAlertAfterWait();
     }
-    console.log('[HelloWork] Returned to list page. Clearing scraping state.');
+    console.log("[HelloWork] Retour à la page de liste. Effacement de l'état de récupération.");
     sessionStorage.removeItem('hwListScrapeState');
   }
 }
@@ -309,10 +309,10 @@ async function collectCandidateUrls(maxCandidates) {
   const visibleCards = shadowRoot ? getStrictlyVisibleElements(cardSelector, shadowRoot) : [];
 
   if (visibleCards.length > 0) {
-    console.log(`[HelloWork] Found ${visibleCards.length} visible candidates. Starting from current position.`);
+    console.log(`[HelloWork] ${visibleCards.length} candidats visibles trouvés. Départ à partir de la position actuelle.`);
     return await scrollToBottomAndCollectLinks(maxCandidates);
   } else {
-    console.log('[HelloWork] No visible candidates. Starting from the top.');
+    console.log('[HelloWork] Aucun candidat visible. Début par le haut.');
     await fastScrollToTop();
     return await scrollToBottomAndCollectLinks(maxCandidates);
   }
@@ -336,7 +336,7 @@ async function clickShowMoreButton() {
   const showMoreButton = getShowMoreButton();
   if (!showMoreButton) return false;
 
-  console.log("[HelloWork] 'Afficher les candidats suivants' button found. Clicking...");
+  console.log("[HelloWork] Bouton 'Afficher les candidats suivants' trouvé. En train de cliquer...");
   clickRandomSpotInside(showMoreButton);
   await delay(getRandomInRange(500, 1000));
   return true;
@@ -371,7 +371,7 @@ function isAtPageBottom() {
 function isStuckAtBottom(previousScrollY) {
   const atBottom = isAtPageBottom() || window.scrollY === previousScrollY;
   if (atBottom) {
-    console.log("[HelloWork] Reached bottom of the page or scroll is stuck.");
+    console.log("[HelloWork] Bas de la page atteint ou le défilement est bloqué.");
   }
   return atBottom;
 }
@@ -383,10 +383,10 @@ function isStuckAtBottom(previousScrollY) {
  */
 function initiateListScrapeNavigation(urls, sourceType) {
   if (!urls || urls.length === 0) {
-    return console.warn('[HelloWork] No candidate links found to start navigation.');
+    return console.warn('[HelloWork] Aucun lien candidat trouvé pour démarrer la navigation.');
   }
   const state = createAndStoreScrapeState(urls, sourceType);
-  console.log(`[HelloWork] Stored state for ${state.urls.length} candidates. Navigating...`);
+  console.log(`[HelloWork] État stocké pour ${state.urls.length} candidats. Navigation...`);
   window.location.href = state.urls[0];
 }
 
@@ -397,7 +397,7 @@ function initiateListScrapeNavigation(urls, sourceType) {
  * @param {string|null} [sourceType=null] L'origine des candidats.
  */
 async function scrapeHwList(maxCandidates = 50, sourceType = null) {
-  console.log(`[HelloWork] Starting list scraping with a max of ${maxCandidates} candidates and source type '${sourceType || 'Non spécifié'}'...`);
+  console.log(`[HelloWork] Liste de départ avec un maximum de ${maxCandidates} candidats et type de source '${sourceType || 'Non spécifié'}'...`);
   const candidateUrls = await collectCandidateUrls(maxCandidates);
   initiateListScrapeNavigation(candidateUrls, sourceType);
 }
@@ -435,12 +435,12 @@ async function performScroll() {
 function getTotalCandidateCount() {
   const resultList = document.querySelector("applicant-result#result-list");
   if (!resultList || !resultList.hasAttribute("nbresult")) {
-    console.warn("[HelloWork] Could not find the total number of candidates (nbresult attribute).");
+    console.warn("[HelloWork] Impossible de trouver le nombre total de candidats (attribut nbresult).");
     return null;
   }
   const count = parseInt(resultList.getAttribute("nbresult"), 10);
   if (isNaN(count)) {
-    console.warn("[HelloWork] 'nbresult' attribute is not a valid number.");
+    console.warn("[HelloWork] L' attribut 'nbresult' n'est pas un nombre valide.");
     return null;
   }
   return count;
@@ -459,7 +459,7 @@ function collectVisibleLinks(linkSet) {
  * @param {number} maxCandidates Le nombre maximum de liens à collecter.
  */
 async function scrollToBottomAndCollectLinks(maxCandidates) {
-  console.log("[HelloWork] Scrolling to collect all candidate links...");
+  console.log("[HelloWork] Défilement pour collecter tous les liens candidats...");
   const allLinks = new Set();
   const totalCandidates = getTotalCandidateCount();
   logTargetCount(totalCandidates, maxCandidates);
@@ -491,9 +491,9 @@ async function scrollToBottomAndCollectLinks(maxCandidates) {
  */
 function logTargetCount(total, maxCandidates) {
   if (total !== null) {
-    console.log(`[HelloWork] Page has ${total} candidates. User limit is ${maxCandidates}.`);
+    console.log(`[HelloWork] La page a ${total} candidats. La limite utilisateur est ${maxCandidates}.`);
   } else {
-    console.log(`[HelloWork] User limit is ${maxCandidates}.`);
+    console.log(`[HelloWork] La limite utilisateur est ${maxCandidates}.`);
   }
 }
 
@@ -504,7 +504,7 @@ function logTargetCount(total, maxCandidates) {
  */
 function hasReachedUserLimit(links, max) {
   if (links.size >= max) {
-    console.log(`[HelloWork] Collected ${links.size} links, reaching user limit of ${max}.`);
+    console.log(`[HelloWork] Collecté ${links.size} liens, atteinte de la limite utilisateur de ${max}.`);
     return true;
   }
   return false;
@@ -517,7 +517,7 @@ function hasReachedUserLimit(links, max) {
  */
 function hasReachedPageTotal(links, total) {
   if (total !== null && links.size >= total) {
-    console.log(`[HelloWork] Collected ${links.size} links, meeting page total of ${total}.`);
+    console.log(`[HelloWork] Collecté ${links.size} liens, total de candidats sur la page de ${total}.`);
     return true;
   }
   return false;
@@ -538,7 +538,7 @@ function hasCollectedAll(allLinks, total, maxCandidates) {
  */
 function logFinalCount(linksCollection) {
   console.log(
-    `[HelloWork] Finished scrolling. Collected ${linksCollection.size} unique links.`
+    `[HelloWork] Défilement terminé. ${linksCollection.size} liens uniques collectés..`
   );
 }
 
@@ -652,7 +652,7 @@ function getStrictlyVisibleElements(selector, root = document) {
 function wasScrapingStopped(currentState) {
   if (currentState?.inProgress) return false;
 
-  console.log('[HelloWork] Scraping was stopped by user. Returning to list page.');
+  console.log("[HelloWork] Scraping a été arrêté par l'utilisateur. Retour à la page de liste de candidats.");
   if (currentState.returnUrl) {
     window.location.href = currentState.returnUrl;
   }
@@ -664,7 +664,7 @@ function wasScrapingStopped(currentState) {
  * @param {object} state L'état actuel du scraping.
  */
 function handleLoginRequiredInList(state) {
-  console.log('[HelloWork] Login required, halting list scrape.');
+  console.log('[HelloWork] Connexion requise, arrêt du list scrape.');
   state.inProgress = false;
   state.stopReason = 'login_required';
   saveScrapeState(state);
@@ -678,7 +678,7 @@ function handleLoginRequiredInList(state) {
 async function waitForUnpause(initialState) {
   let currentState = initialState;
   while (currentState.isPaused) {
-    console.log("[HelloWork] Scraping is paused. Checking again in 2 seconds...");
+    console.log("[HelloWork] Scraping est en pause. Reprise dans 2 secondes...");
     await delay(2000);
     currentState = getScrapeState();
     if (wasScrapingStopped(currentState)) return null; // Signale que le processus a été arrêté
@@ -694,7 +694,7 @@ function navigateToNextProfile(state) {
   const nextIndex = state.currentIndex + 1;
   const newState = { ...state, currentIndex: nextIndex };
   saveScrapeState(newState);
-  console.log(`[HelloWork] Navigating to next profile, index ${nextIndex}.`);
+  console.log(`[HelloWork] Navigation vers le profil suivant, index ${nextIndex}.`);
   window.location.href = newState.urls[nextIndex];
 }
 
@@ -706,16 +706,16 @@ function navigateToNextProfile(state) {
  */
 function handleBackgroundResponse(response, resolve, reject) {
   if (chrome.runtime.lastError) {
-    console.error("[HelloWork] Message to background failed:", chrome.runtime.lastError.message);
+    console.error("[HelloWork] Envoi du message au background a échoué:", chrome.runtime.lastError.message);
     return reject(new Error(chrome.runtime.lastError.message));
   }
 
   if (response?.status === "success" || response?.status === "login_required") {
-    console.log("[HelloWork] Background script confirmed data receipt.");
+    console.log("[HelloWork] Background script a confirmé la réception des données.");
     resolve(response);
   } else {
-    const errorMessage = response?.message || "Unknown error from background script.";
-    console.error("[HelloWork] Background script reported an error:", errorMessage);
+    const errorMessage = response?.message || "Erreur inconnue du background script.";
+    console.error("[HelloWork] Background script a signalé une erreur:", errorMessage);
     reject(new Error(errorMessage));
   }
 }
@@ -762,7 +762,7 @@ async function formatScrapedData(sourceType) {
   return {
     firstName,
     lastName,
-    email: email || `${firstName}_${lastName}@hellowork.com`,
+    email: email || `@hellowork.com ${firstName}_${lastName}`,
     phone,
     source: 'hellowork',
     sourceType: sourceType,
@@ -828,7 +828,7 @@ async function extractProfileData() {
  * @param {object} state L'état actuel du scraping.
  */
 function returnToListPage(state) {
-  console.log('[HelloWork] List scraping complete. Returning to list page.');
+  console.log('[HelloWork] List scraping terminé. Retour à la page de liste de candidats.');
   window.location.href = state.returnUrl;
 }
 
@@ -903,16 +903,16 @@ async function processProfilePageInListScrape() {
  * @param {number} [timeout=5000] Le temps d'attente maximum en millisecondes.
  */
 async function awaitPdfViewerReady(timeout = 5000) {
-  console.log("[Hellowork] Waiting for PDF viewer to be ready...");
+  console.log("[Hellowork] Attente du viualisateur de PDF...");
 
   const docViewer = await waitForElement("#documentViewer", timeout);
-  if (!docViewer.shadowRoot) throw new Error("documentViewer shadowRoot not found.");
+  if (!docViewer.shadowRoot) throw new Error("documentViewer shadowRoot pas trouvé.");
   
   const pdfHost = await waitForElementInRoot(docViewer.shadowRoot, "div > hw-pdf-viewer", timeout);
-  if (!pdfHost.shadowRoot) throw new Error("hw-pdf-viewer shadowRoot not found.");
+  if (!pdfHost.shadowRoot) throw new Error("hw-pdf-viewer shadowRoot pas trouvé.");
 
   await waitForElementInRoot(pdfHost.shadowRoot, "#viewer", timeout);
-  console.log("[Hellowork] PDF viewer is ready.");
+  console.log("[Hellowork] Visualisateur de PDF prêt.");
 }
 
 /**
@@ -924,7 +924,7 @@ async function awaitPdfViewerReady(timeout = 5000) {
 function waitForElementInsideShadow(shadowHostSelector, innerSelector, timeout = 2000) {
   return new Promise((resolve, reject) => {
     const host = document.querySelector(shadowHostSelector);
-    if (!host || !host.shadowRoot) return reject(new Error(`Shadow host not found: ${shadowHostSelector}`));
+    if (!host || !host.shadowRoot) return reject(new Error(`Shadow host non trouvé: ${shadowHostSelector}`));
     resolve(waitForElementInRoot(host.shadowRoot, innerSelector, timeout));
   });
 }
@@ -948,7 +948,7 @@ function setupGoneObserver(root, selector, resolve, reject, timeout) {
   observer.observe(root, { childList: true, subtree: true });
   timeoutId = setTimeout(() => {
     observer.disconnect();
-    reject(new Error(`Timeout waiting for element to be gone: ${selector}`));
+    reject(new Error(`Timeout en attendant que l'élément disparaisse: ${selector}`));
   }, timeout);
 }
 
@@ -977,13 +977,13 @@ function waitForElementGone(selector, timeout = 2000) {
  */
 async function closeDetail() {
   const contactWorkflow = await waitForElement("#tools > contact-workflow");
-  if (!contactWorkflow.shadowRoot) throw new Error("contact-workflow shadowRoot not found.");
+  if (!contactWorkflow.shadowRoot) throw new Error("contact-workflow shadowRoot pas trouvé.");
 
   const emailComponent = await waitForElementInRoot(contactWorkflow.shadowRoot, "#emailToApplicant");
-  if (!emailComponent.shadowRoot) throw new Error("#emailToApplicant shadowRoot not found.");
+  if (!emailComponent.shadowRoot) throw new Error("#emailToApplicant shadowRoot pas trouvé.");
 
   const closeBtn = emailComponent.shadowRoot.querySelector("#close");
-  if (!closeBtn) throw new Error("Close button not found.");
+  if (!closeBtn) throw new Error("Bouton fermeture pas trouvé.");
 
   clickRandomSpotInside(closeBtn);
   await waitForElementGoneInRoot(contactWorkflow.shadowRoot, '#emailToApplicant');
