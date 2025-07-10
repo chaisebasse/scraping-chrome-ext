@@ -1,35 +1,49 @@
 window.isScrapingPaused = false;
 
+/**
+ * Bascule l'état de pause du scraping et affiche une alerte.
+ */
 function togglePauseScraping() {
   window.isScrapingPaused = !window.isScrapingPaused;
   if (window.isScrapingPaused) {
-    const message = 'Scraping PAUSED. Press Ctrl+Alt+P to resume.';
+    const message = 'Scraping en PAUSE. Appuyez sur Ctrl+Alt+P pour reprendre.';
     console.log(`%c[LinkedIn Recruiter] ${message}`, 'color: orange; font-weight: bold;');
     alert(message);
   } else {
-    console.log('%c[LinkedIn Recruiter] Scraping RESUMED.', 'color: green; font-weight: bold;');
+    console.log('%c[LinkedIn Recruiter] Scraping REPRIS.', 'color: green; font-weight: bold;');
   }
 }
 
-if (!window.linkedinScraperListenerRegistered) {
-  window.linkedinScraperListenerRegistered = true;
+/**
+ * Gère le message pour lancer le scraper LinkedIn.
+ * @param {object} message - Le message reçu.
+ * @param {function} sendResponse - La fonction pour répondre.
+ */
+function handleLinkedinScraperMessage(message, sendResponse) {
+  console.log(`[LinkedIn Recruiter] Requête de scraping reçue avec max candidats : ${message.maxCandidates}, type de source : ${message.sourceType}. Routage...`);
+  routeScraperBasedOnPage(message.maxCandidates, message.sourceType);
+  sendResponse({ status: 'success' });
+}
+
+/**
+ * Gère le message indiquant qu'une connexion est requise.
+ */
+function handleLoginRequiredMessage() {
+  alert("Connexion à MeilleurPilotage requise. Veuillez vous connecter à MP puis relancer le scraper.");
+}
+
+/**
+ * Met en place les écouteurs de messages et d'événements clavier.
+ */
+function setupListeners() {
   chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
-    if (message.action === "runLinkedinScraper") {
-      console.log(`[LinkedIn Recruiter] Received scraping request with max candidates: ${message.maxCandidates}, source type: ${message.sourceType}. Routing...`);
-      routeScraperBasedOnPage(message.maxCandidates, message.sourceType);
-      sendResponse({ status: 'success' });
-      return true;
-    } else if (message.action === 'login_required') {
-      alert("Connexion à MeilleurPilotage requise. Veuillez vous connecter à MP puis relancer le scraper.");
-      return true;
-    }
+    if (message.action === "runLinkedinScraper") handleLinkedinScraperMessage(message, sendResponse);
+    else if (message.action === 'login_required') handleLoginRequiredMessage();
+    return true; // Indique une réponse asynchrone pour certains cas.
   });
 
   document.addEventListener('keydown', (event) => {
-    if (event.ctrlKey && event.altKey && event.key.toLowerCase() === 'p') {
-      event.preventDefault();
-      togglePauseScraping();
-    }
+    if (event.ctrlKey && event.altKey && event.key.toLowerCase() === 'p') togglePauseScraping();
   });
 }
 
@@ -44,12 +58,20 @@ function routeScraperBasedOnPage(maxCandidates, sourceType) {
 }
 
 /**
+ * Point d'entrée principal pour le script de contenu LinkedIn.
+ */
+if (!window.linkedinScraperListenerRegistered) {
+  window.linkedinScraperListenerRegistered = true;
+  setupListeners();
+}
+/**
  * Vérifie si la page actuelle est une fiche candidat LinkedIn Recruiter.
  * @returns {boolean}
  */
 function isOnLinkedInProfilePage() {
-  return location.href.startsWith("https://www.linkedin.com/talent/hire/") &&
-         location.href.includes("/manage/all/profile/");
+  const href = location.href;
+  return href.startsWith("https://www.linkedin.com/talent/hire/") &&
+         (href.includes("/manage/all/profile/") || href.includes("/discover/applicants/profile/"));
 }
 
 /**
@@ -57,9 +79,11 @@ function isOnLinkedInProfilePage() {
  * @returns {boolean}
  */
 function isOnLinkedInListPage() {
-  return location.href.startsWith("https://www.linkedin.com/talent/hire/") && 
-         location.href.includes("/manage/all") &&
-         !location.href.includes("/profile/");
+  const href = location.href;
+  const isProjectListPage = href.includes("/manage/all") && !href.includes("/profile/");
+  const isApplicantListPage = href.includes("/discover/applicants?jobId") && !href.includes("/profile/");
+
+  return href.startsWith("https://www.linkedin.com/talent/hire/") && (isProjectListPage || isApplicantListPage);
 }
 
 /**
@@ -71,11 +95,10 @@ async function extractProfileDataWithAttachments(sourceType) {
   const profileTab = await waitForElement('[data-live-test-profile-index-tab]');
   const attachmentsTab = await waitForElement('[data-live-test-profile-attachments-tab]');
     
-  await openTab(profileTab);
+  await openProfileTab(profileTab);
   const contactInfo = extractContactInfo(firstName, lastName);
   
-  await openTab(attachmentsTab);
-  console.log("[LinkedIn Recruiter] Onglet pièces jointes cliqué.");
+  await openAttachmentsTab(attachmentsTab);
   
   const scrapedData = {
     firstName,
@@ -98,7 +121,8 @@ async function extractProfileDataWithAttachments(sourceType) {
  */
 function extractContactInfo(firstName, lastName) {
   const email = document.querySelector("span[data-test-contact-email-address]")?.textContent.trim() || `${firstName}_${lastName}@linkedin.com`;
-  const phone = document.querySelector("span[data-test-contact-phone][data-live-test-contact-phone]")?.textContent.trim() || null;
+  const rawPhone = document.querySelector("span[data-test-contact-phone][data-live-test-contact-phone]")?.textContent.trim() || null;
+  const phone = normalizeFrenchNumber(rawPhone);
   return { email, phone };
 }
 
@@ -123,43 +147,37 @@ function extractNameFromNoteButton() {
 }
 
 /**
- * Ouvre l’onglet des pièces jointes et attend qu’elles soient chargées.
+ * Ouvre l'onglet Profil pour s'assurer que les informations de contact sont visibles.
+ * @param {HTMLElement} tabElement - L'élément de l'onglet profil.
  */
-async function openTab(element) {
-  if (!element) {
-    console.warn("[LinkedIn Recruiter] Tab element not found.");
+async function openProfileTab(tabElement) {
+  await clickTab(tabElement);
+}
+
+/**
+ * Ouvre l'onglet des pièces jointes uniquement si des pièces jointes sont présentes.
+ * @param {HTMLElement} tabElement - L'élément de l'onglet pièces jointes.
+ */
+async function openAttachmentsTab(tabElement) {
+  const count = extractAttachmentCount(tabElement);
+  if (count === 0) {
+    console.log(`[LinkedIn Recruiter] Aucune pièce jointe détectée (count = ${count}). Onglet non cliqué.`);
     return;
   }
-
-  if (isAttachmentsTab(element) && !hasAttachments(element)) {
-    return; // Ne pas cliquer si c'est l'onglet des PJ sans PJ
-  }
-
-  const count = isAttachmentsTab(element) ? extractAttachmentCount(element) : null;
-  await clickTab(element, count);
-}
-
-function isAttachmentsTab(element) {
-  return element.hasAttribute('data-live-test-profile-attachments-tab');
-}
-
-function hasAttachments(tabElement) {
-  const count = extractAttachmentCount(tabElement);
-  if (count > 0) return true;
-  console.log(`[LinkedIn Recruiter] Aucune pièce jointe détectée (count = ${count}). Onglet non cliqué.`);
-  return false;
+  await clickTab(tabElement, count);
 }
 
 function extractAttachmentCount(tabElement) {
   const labelText = tabElement?.querySelector('div')?.innerText?.trim() || '';
   const match = labelText.match(/\((\d+)\)/);
-  const number = match ? parseInt(match[1], 10) : 0;
-  return number;
+  return match ? parseInt(match[1], 10) : 0;
 }
 
-async function clickTab(tab, count) {
+async function clickTab(tab, count = null) {
   const rDelay = getRandomInRange();
-  console.log(`[LinkedIn Recruiter] ${count} pièce(s) jointe(s) détectée(s). Attente de ${rDelay}ms avant clic...`);
+  if (count !== null) {
+    console.log(`[LinkedIn Recruiter] ${count} pièce(s) jointe(s) détectée(s). Attente de ${rDelay}ms avant clic...`);
+  }
   await delay(rDelay);
   clickRandomSpotInside(tab);
 }
@@ -225,53 +243,65 @@ async function maybeSendData(scrapedData) {
 }
 
 /**
+ * Navigue vers la page suivante de la liste de candidats.
+ * @returns {Promise<boolean>} Vrai si la navigation a réussi, sinon faux.
+ */
+async function goToNextPage() {
+  const nextButton = document.querySelector('a[data-test-pagination-next]');
+  const isDisabled = nextButton?.getAttribute('aria-disabled') === 'true';
+
+  if (!nextButton || isDisabled) {
+    console.log("[LinkedIn Recruiter] Plus de pages à scraper.");
+    return false;
+  }
+
+  console.log("[LinkedIn Recruiter] Bouton 'Page suivante' trouvé. Clic pour passer à la page suivante...");
+  clickRandomSpotInside(nextButton);
+  await waitForNextPageLoad();
+  return true;
+}
+
+/**
+ * Traite une seule page de la liste de candidats.
+ * @param {number} pageNumber - Le numéro de la page actuelle.
+ * @param {number} processedCount - Le nombre de candidats déjà traités.
+ * @param {number} maxCandidates - Le nombre maximum de candidats à traiter.
+ * @param {string|null} sourceType - Le type de source des candidats.
+ * @returns {Promise<{newlyProcessed: number, stop: boolean}>}
+ */
+async function processListPage(pageNumber, processedCount, maxCandidates, sourceType) {
+  console.log(`[LinkedIn Recruiter] Traitement de la page ${pageNumber}...`);
+  await prepareForListScraping();
+  const candidateLinks = getCandidateListLinks();
+
+  if (candidateLinks.length === 0) {
+    console.warn(`[LinkedIn Recruiter] Aucun candidat trouvé sur la page ${pageNumber}. Arrêt.`);
+    return { newlyProcessed: 0, stop: true };
+  }
+
+  console.log(`[LinkedIn Recruiter] ${candidateLinks.length} candidats détectés sur la page ${pageNumber}.`);
+  return await processCandidateList(candidateLinks, processedCount, maxCandidates, sourceType);
+}
+
+/**
  * Orchestre le scraping d'une liste de profils.
  */
 async function scrapeListOfProfiles(maxCandidates = 25, sourceType = null) {
-  console.log(`[LinkedIn Recruiter] Starting list scraping with a max of ${maxCandidates} candidates and source type '${sourceType || 'Non spécifié'}'...`);
+  console.log(`[LinkedIn Recruiter] Démarrage du scraping de liste avec un maximum de ${maxCandidates} candidats et type de source '${sourceType || 'Non spécifié'}'...`);
   let pageNumber = 1;
   let processedCount = 0;
 
   while (processedCount < maxCandidates) {
-    console.log(`[LinkedIn Recruiter] Processing page ${pageNumber}...`);
-    await prepareForListScraping();
-    const candidateLinks = getCandidateListLinks();
-
-    if (candidateLinks.length === 0) {
-      console.warn(`[LinkedIn Recruiter] No candidates found on page ${pageNumber}. Stopping.`);
-      break;
-    }
-
-    console.log(`[LinkedIn Recruiter] ${candidateLinks.length} candidats détectés on page ${pageNumber}.`);
-    const { newlyProcessed, stop } = await processCandidateList(candidateLinks, processedCount, maxCandidates, sourceType);
+    const { newlyProcessed, stop } = await processListPage(pageNumber, processedCount, maxCandidates, sourceType);
     processedCount += newlyProcessed;
 
-    if (stop) {
-      console.log('[LinkedIn Recruiter] Halting due to login requirement.');
-      alert("Connexion à MeilleurPilotage requise. Le scraping de la liste est arrêté.");
+    if (stop || !(await goToNextPage())) {
       break;
     }
-
-    if (processedCount >= maxCandidates) {
-      console.log(`[LinkedIn Recruiter] Reached user limit of ${maxCandidates}. Stopping.`);
-      break;
-    }
-
-    const nextButton = document.querySelector('a[data-test-pagination-next]');
-    const isDisabled = nextButton?.getAttribute('aria-disabled') === 'true';
-
-    if (!nextButton || isDisabled) {
-      console.log("[LinkedIn Recruiter] No more pages to scrape.");
-      break;
-    }
-
-    console.log("[LinkedIn Recruiter] Next page button found. Clicking to go to next page...");
-    clickRandomSpotInside(nextButton);
-    await waitForNextPageLoad();
     pageNumber++;
   }
   console.log(
-    `[LinkedIn Recruiter] Scraping of all pages is complete. Processed ${processedCount} candidates.`
+    `[LinkedIn Recruiter] Le scraping de toutes les pages est terminé. ${processedCount} candidats traités.`
   );
 }
 
@@ -291,24 +321,25 @@ async function prepareForListScraping() {
  * @param {Array<Element>} links - Les éléments <a> des candidats.
  */
 async function processCandidateList(links, processedCount, maxCandidates, sourceType) {
-  let newlyProcessedCount = 0;
+  let newlyProcessed = 0;
   for (let i = 0; i < links.length; i++) {
-    if (processedCount + newlyProcessedCount >= maxCandidates) {
-      console.log(`[LinkedIn Recruiter] Limit of ${maxCandidates} reached during page processing.`);
+    if (processedCount + newlyProcessed >= maxCandidates) {
+      console.log(`[LinkedIn Recruiter] Limite de ${maxCandidates} atteinte pendant le traitement de la page.`);
       break;
     }
     while (window.isScrapingPaused) {
       await delay(1000); // Wait 1 second before checking again
     }
-    const result = await processSingleCandidateFromList(links[i], processedCount + newlyProcessedCount + 1, sourceType);
+    const result = await processSingleCandidateFromList(links[i], processedCount + newlyProcessed + 1, sourceType);
     if (result?.status === 'login_required') {
-      console.log('[LinkedIn Recruiter] Login required. Stopping list scrape.');
-      return { newlyProcessed: newlyProcessedCount, stop: true };
+      console.log('[LinkedIn Recruiter] Connexion requise. Arrêt du scraping de la page.');
+      alert("Connexion à MeilleurPilotage requise. Le scraping de la liste est arrêté.");
+      return { newlyProcessed, stop: true };
     }
-    newlyProcessedCount++;
+    newlyProcessed++;
     await delay(getRandomInRange(500, 3100));
   }
-  return { newlyProcessed: newlyProcessedCount, stop: false };
+  return { newlyProcessed, stop: false };
 }
 
 /**
@@ -317,15 +348,17 @@ async function processCandidateList(links, processedCount, maxCandidates, source
  * @param {number} index - L'index du candidat dans la liste (pour le logging).
  */
 async function processSingleCandidateFromList(link, index, sourceType) {
+  console.log(`[LinkedIn Recruiter] Traitement du profil ${index}...`);
   try {
     await openProfileFromList(link);
     const result = await scrapeLinkedInProfile(sourceType);
     logScrapingResult(result, index);
     await closeProfile();
-    console.log(`[LinkedIn Recruiter] Profil ${index} traité.`);
+    console.log(`[LinkedIn Recruiter] Profil ${index} traité avec succès.`);
     return result;
   } catch (e) {
-    console.warn(`[LinkedIn Recruiter] Erreur pour le candidat ${index} :`, e);
+    console.warn(`[LinkedIn Recruiter] Échec du traitement du candidat ${index} :`, e.message);
+    await tryCloseWithButton(); // Attempt to close the profile to unblock the process
     return { status: 'error', message: e.message };
   }
 }
@@ -336,6 +369,7 @@ async function processSingleCandidateFromList(link, index, sourceType) {
  */
 async function openProfileFromList(link) {
   link.scrollIntoView({ behavior: "smooth", block: "center" });
+  await delay(getRandomInRange(200, 500)); // Brief pause after scrolling
   clickRandomSpotInside(link);
   await waitForProfileOpen();
   await waitForElement('[data-live-test-profile-attachments-tab]');
@@ -382,68 +416,133 @@ function logScrapingResult(result, index) {
 }
 
 /**
- * Scrolle la page jusqu'en bas de manière "humaine" pour charger tous les éléments.
+ * Attend que la vue du profil soit ouverte en vérifiant l'URL.
+ * @param {number} [timeout=5000] - Délai d'attente maximum.
  */
-async function scrollToBottom() {
-  return new Promise(resolve => scrollLoop(resolve));
+async function waitForProfileOpen(timeout = 5000) {
+  const start = Date.now();
+  while (!isOnLinkedInProfilePage()) {
+    if (Date.now() - start > timeout) {
+      throw new Error("Timeout : le profil ne s'est pas chargé dans le temps imparti.");
+    }
+    await delay(300);
+  }
+  await delay(getRandomInRange(500, 1000)); // Délai supplémentaire pour la stabilisation de l'UI
 }
 
-function getRandomInRange(min=300, max=1500) {
+/**
+ * Tente de fermer la vue détaillée du profil, soit en cliquant à l'extérieur,
+ * soit en utilisant le bouton de fermeture.
+ */
+async function closeProfile() {
+  // Tenter de fermer avec le bouton est plus fiable.
+  const closedWithButton = await tryCloseWithButton();
+  if (closedWithButton) return;
+
+  // Si cela échoue, tenter de cliquer à l'extérieur comme solution de repli.
+  await tryCloseByClickingOutside();
+}
+
+/**
+ * Tente de fermer le profil en cliquant sur l'overlay.
+ * @returns {Promise<boolean>} Vrai si la fermeture a réussi, sinon faux.
+ */
+async function tryCloseByClickingOutside() {
+  const overlay = document.querySelector("base-slidein-container:not([data-test-base-slidein])");
+  if (overlay) {
+    clickRandomSpotInside(overlay);
+    console.log("[LinkedIn Recruiter] Fermeture du profil via clic en dehors.");
+    await delay(getRandomInRange(300, 800));
+    return true;
+  }
+  return false;
+}
+
+/**
+ * Tente de fermer le profil en utilisant le bouton de fermeture dédié. C'est la méthode préférée.
+ * @returns {Promise<boolean>} Vrai si la fermeture a réussi, sinon faux.
+ */
+async function tryCloseWithButton() {
+  const closeBtn = document.querySelector("a[data-test-close-pagination-header-button]");
+  if (closeBtn) {
+    clickRandomSpotInside(closeBtn);
+    console.log("[LinkedIn Recruiter] Fermeture du profil via bouton de fermeture.");
+    await delay(getRandomInRange(300, 800));
+    return true;
+  }
+  return false;
+}
+
+// === Fonctions utilitaires ===
+
+/**
+ * Met en pause l'exécution pendant une durée spécifiée.
+ * @param {number} ms - Le nombre de millisecondes à attendre.
+ * @returns {Promise<void>}
+ */
+function delay(ms) {
+  return new Promise(resolve => setTimeout(resolve, ms));
+}
+
+/**
+ * Génère un nombre aléatoire dans un intervalle donné.
+ * @param {number} [min=300] - La borne minimale.
+ * @param {number} [max=1500] - La borne maximale.
+ * @returns {number} Un entier aléatoire.
+ */
+function getRandomInRange(min = 300, max = 1500) {
   return Math.floor(Math.random() * (max - min + 1)) + min;
 }
 
+/**
+ * Attend qu'un élément apparaisse dans le document.
+ * @param {string} selector - Le sélecteur CSS de l'élément cible.
+ * @param {number} [timeout=5000] - Le délai d'attente en millisecondes.
+ * @returns {Promise<Element>}
+ */
+function waitForElement(selector, timeout = 5000) {
+  return new Promise((resolve, reject) => {
+    const el = document.querySelector(selector);
+    if (el) return resolve(el);
+
+    let timeoutId;
+    const observer = new MutationObserver(() => {
+      const el = document.querySelector(selector);
+      if (el) {
+        observer.disconnect();
+        clearTimeout(timeoutId);
+        resolve(el);
+      }
+    });
+
+    observer.observe(document.body, { childList: true, subtree: true });
+    timeoutId = setTimeout(() => {
+      observer.disconnect();
+      reject(new Error(`Timeout: Élément ${selector} introuvable`));
+    }, timeout);
+  });
+}
+
+/**
+ * Simule un clic utilisateur réaliste à l'intérieur du cadre de délimitation d'un élément.
+ * @param {Element} element - L'élément sur lequel cliquer.
+ */
+function clickRandomSpotInside(element) {
+  const rect = element.getBoundingClientRect();
+  const x = rect.left + (rect.width * Math.random());
+  const y = rect.top + (rect.height * Math.random());
+  const eventOpts = { bubbles: true, cancelable: true, clientX: x, clientY: y };
+  ["mousedown", "mouseup", "click"].forEach(type => {
+    element.dispatchEvent(new MouseEvent(type, eventOpts));
+  });
+}
+
+/**
+ * Fait défiler la page rapidement vers le haut.
+ */
 async function fastScrollToTop() {
-  return new Promise(resolve => {
-    window.scrollTo({ top: 0, behavior: "auto" });
-    setTimeout(resolve, 300);
-  });
-}
-
-/**
- * Boucle de scroll principale qui s'arrête quand le bas de la page est atteint.
- * @param {Function} resolve - La fonction resolve de la promesse parente.
- */
-function scrollLoop(resolve) {
-  if (isAtPageBottom()) {
-    return resolve();
-  }
-  const miniScrollCount = getRandomInRange(130, 280);
-  performMiniScrolls(miniScrollCount, () => {
-    const pause = getRandomInRange(300, 1200);
-    setTimeout(() => scrollLoop(resolve), pause);
-  });
-}
-
-/**
- * Effectue une série de petits scrolls pour simuler un défilement fluide.
- * @param {number} count - Le nombre de petits scrolls à effectuer.
- * @param {Function} onComplete - Callback à appeler une fois terminé.
- */
-function performMiniScrolls(count, onComplete) {
-  let scrolled = 0;
-  function miniScroll() {
-    if (scrolled >= count) return onComplete();
-    window.scrollBy(0, getRandomInRange(1, 15));
-    scrolled++;
-    setTimeout(miniScroll, getRandomInRange(1, 2));
-  }
-  miniScroll();
-}
-
-function getCandidateListLinks() {
-  const listItems = document.querySelectorAll(
-    'ol[data-test-paginated-list] li div[data-test-paginated-list-item]'
-  );
-
-  const links = [];
-  listItems.forEach((item) => {
-    const firstLink = item.querySelector("a");
-    if (firstLink) {
-      links.push(firstLink);
-    }
-  });
-
-  return links;
+  window.scrollTo({ top: 0, behavior: "auto" });
+  await delay(300);
 }
 
 /**
@@ -457,53 +556,53 @@ function isAtPageBottom() {
   return scrollTop + windowHeight >= scrollHeight - 10;
 }
 
-async function waitForProfileOpen(timeout = 1000) {
-  const start = Date.now();
-  while (!isOnLinkedInProfilePage()) {
-    if (Date.now() - start > timeout) {
-      throw new Error("Timeout: profil non chargé");
-    }
-    await delay(300);
+/**
+ * Effectue une série de petits scrolls pour simuler un défilement fluide.
+ * @param {number} count - Le nombre de petits scrolls à effectuer.
+ */
+async function performMiniScrolls(count) {
+  for (let i = 0; i < count; i++) {
+    window.scrollBy(0, getRandomInRange(1, 15));
+    await delay(getRandomInRange(1, 2));
   }
-  await delay(1000);
 }
 
 /**
- * Tente de fermer la vue détaillée du profil, soit en cliquant à l'extérieur,
- * soit en utilisant le bouton de fermeture.
+ * Scrolle la page jusqu'en bas de manière "humaine" pour charger tous les éléments.
  */
-async function closeProfile() {
-  const closed = await tryCloseByClickingOutside();
-  if (closed) return;
-
-  await tryCloseWithButton();
+async function scrollToBottom() {
+  while (!isAtPageBottom()) {
+    await performMiniScrolls(getRandomInRange(130, 280));
+    await delay(getRandomInRange(300, 1200));
+  }
 }
 
 /**
- * Tente de fermer le profil en cliquant sur l'overlay.
- * @returns {Promise<boolean>} Vrai si la fermeture a été tentée, sinon faux.
+ * Récupère les éléments <a> des candidats dans la liste.
+ * @returns {Array<Element>}
  */
-async function tryCloseByClickingOutside() {
-  if (Math.random() < 0.5) return false; // 50% de chance de ne pas utiliser cette méthode
-
-  const overlay = document.querySelector("base-slidein-container:not([data-test-base-slidein])");
-  if (overlay) {
-    clickRandomSpotInside(overlay);
-    console.log("[LinkedIn Recruiter] Fermeture du profil via clic en dehors.");
-    await delay(300);
-    return true;
-  }
-  return false;
+function getCandidateListLinks() {
+  const listItems = document.querySelectorAll('ol[data-test-paginated-list] li div[data-test-paginated-list-item]');
+  return Array.from(listItems)
+    .map(item => item.querySelector("a"))
+    .filter(link => link);
 }
 
 /**
- * Tente de fermer le profil en utilisant le bouton de fermeture dédié.
+ * Normalise un numéro de téléphone français.
+ * @param {string} rawPhone Le numéro de téléphone brut.
+ * @returns {string|null} Le numéro normalisé (ex: 0612345678) ou null si invalide.
  */
-async function tryCloseWithButton() {
-  const closeBtn = document.querySelector("a[data-test-close-pagination-header-button]");
-  if (closeBtn) {
-    clickRandomSpotInside(closeBtn);
-    console.log("[LinkedIn Recruiter] Fermeture du profil via bouton de fermeture.");
-    await delay(300);
+function normalizeFrenchNumber(rawPhone) {
+  if (!rawPhone) return null;
+
+  const cleaned = rawPhone.replace(/[\s\-().]/g, '');
+  const internationalMatch = /^(?:\+33|0033)([167]\d{8})$/.exec(cleaned);
+  if (internationalMatch) {
+    return '0' + internationalMatch[1];
   }
+  if (/^0[167]\d{8}$/.test(cleaned)) {
+    return cleaned;
+  }
+  return null;
 }
