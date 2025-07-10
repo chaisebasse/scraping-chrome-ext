@@ -26,7 +26,7 @@ export function handleInsertToMP() {
   const allUrlPatterns = Object.values(CV_INTERCEPTION_CONFIG).map(c => c.urlPattern);
   if (allUrlPatterns.length > 0) {
     chrome.webRequest.onBeforeRequest.addListener(handleWebRequest, { urls: allUrlPatterns });
-    console.log("[BackgroundInsert] Persistent CV interceptor is active.");
+    console.log("[BackgroundInsert] L'intercepteur de CV persistant est actif.");
   }
 }
 
@@ -60,8 +60,8 @@ export async function handleCandidateMessage(message, sender) {
     const result = await processCandidateMessage(message.scrapedData, sender);
     return handleProcessingResult(result);
   } catch (error) {
-    console.error("Error processing candidate:", error);
-    return { status: "error", message: error.message };
+    console.error("Erreur lors du traitement du candidat :", error);
+    return { status: "error", message: error.message || "Erreur inconnue" };
   }
 }
 
@@ -88,7 +88,7 @@ async function processCandidateMessage(scrapedData, sender) {
   await waitIfProcessing();
   isProcessing = true;
   const tabId = sender.tab.id;
-  console.log(`[BackgroundInsert] Lock acquired for tab ${tabId}. Processing:`, scrapedData.firstName);
+  console.log(`[BackgroundInsert] Verrou acquis pour l'onglet ${tabId}. Traitement de :`, scrapedData.firstName);
   try {
     return await executeCandidateProcessing(scrapedData, tabId);
   } finally {
@@ -103,7 +103,7 @@ async function processCandidateMessage(scrapedData, sender) {
  */
 async function waitIfProcessing() {
   while (isProcessing) {
-    console.log("[BackgroundInsert] Another process is running, waiting...");
+    console.log("[BackgroundInsert] Un autre processus est en cours, en attente...");
     await delay(200);
   }
 }
@@ -117,7 +117,7 @@ function cleanupTabState(tabId) {
   delete capturedUrlsByTab[tabId];
   delete pendingWaitersByTab[tabId];
   isProcessing = false;
-  console.log(`[BackgroundInsert] Lock released for tab ${tabId}. Ready for next candidate.`);
+  console.log(`[BackgroundInsert] Verrou libéré pour l'onglet ${tabId}. Prêt pour le prochain candidat.`);
 }
 
 /**
@@ -156,13 +156,13 @@ async function fetchAndEncodeCv(cvUrl) {
  * @returns {Promise<void>}
  */
 async function attachCvData(scrapedData, tabId) {
-  console.log(`[BackgroundInsert] Attachment required for tab ${tabId}. Checking for CV.`);
+  console.log(`[BackgroundInsert] Pièce jointe requise pour l'onglet ${tabId}. Vérification du CV.`);
   try {
     const cvUrl = await getCvUrl(tabId);
-    console.log(`[BackgroundInsert] Using CV URL for tab ${tabId}:`, cvUrl);
+    console.log(`[BackgroundInsert] Utilisation de l'URL du CV pour l'onglet ${tabId} :`, cvUrl);
     scrapedData.cvBase64 = await fetchAndEncodeCv(cvUrl);
   } catch (error) {
-    console.warn(`[BackgroundInsert] Could not attach CV for tab ${tabId}:`, error.message);
+    console.warn(`[BackgroundInsert] Impossible d'attacher le CV pour l'onglet ${tabId} :`, error.message);
   }
 }
 
@@ -187,7 +187,7 @@ function getCvUrl(tabId) {
 function createCvWaiterTimeout(tabId, reject, timeoutMs) {
   return setTimeout(() => {
     delete pendingWaitersByTab[tabId];
-    reject(new Error(`Timeout waiting for CV on tab ${tabId}`));
+    reject(new Error(`Timeout en attente du CV pour l'onglet ${tabId}`));
   }, timeoutMs);
 }
 
@@ -267,12 +267,12 @@ async function handleExistingMpTab(tabId, scrapedData) {
  * @returns {Promise<{loginRequired: boolean}>} Un objet indiquant que la connexion est requise.
  */
 async function handleMpLoginRedirect(originalScraperTabId) {
-  console.log("[BackgroundInsert] Login page detected. Aborting submission.");
+  console.log("[BackgroundInsert] Page de connexion détectée. Annulation de la soumission.");
   const message = { action: 'login_required' };
   chrome.tabs.sendMessage(originalScraperTabId, message, () => {
     if (chrome.runtime.lastError) {
       const msg = chrome.runtime.lastError.message;
-      console.warn(`[BackgroundInsert] Could not send 'login_required' message: ${msg}`);
+      console.warn(`[BackgroundInsert] Impossible d'envoyer le message 'login_required' : ${msg}`);
     }
   });
   return { loginRequired: true };
@@ -289,7 +289,7 @@ async function handleMpLoginRedirect(originalScraperTabId) {
 async function handleNewMpTab(url, scrapedData, originalScraperTabId) {
   const loginUrlPart = "/servlet/LoginMeilleurPilotage";
   const newTab = await createTab(url);
-  console.log(`[BackgroundInsert] New tab created. Final URL is: ${newTab.url}`);
+  console.log(`[BackgroundInsert] Nouvel onglet créé. L'URL finale est : ${newTab.url}`);
 
   if (newTab.url.includes(loginUrlPart)) {
     return await handleMpLoginRedirect(originalScraperTabId);
@@ -341,7 +341,7 @@ async function resolveWithFinalTab(tabId, listener, resolve, reject) {
     const finalTab = await chrome.tabs.get(tabId);
     resolve(finalTab);
   } catch (e) {
-    const errorMsg = `Tab ${tabId} was closed before it could be processed.`;
+    const errorMsg = `L'onglet ${tabId} a été fermé avant de pouvoir être traité.`;
     console.warn(`[BackgroundInsert/createTab] ${errorMsg}: ${e.message}`);
     reject(new Error(errorMsg));
   }

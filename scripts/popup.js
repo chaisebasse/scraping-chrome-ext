@@ -8,7 +8,6 @@ document.addEventListener("DOMContentLoaded", () => {
     const url = tab?.url || "";
 
     // Get all buttons
-    const mpButton = document.getElementById("runMPBtn");
     const hwButton = document.getElementById("runHwBtn");
     const linkedInButton = document.getElementById("choixRecrBtn");
 
@@ -17,7 +16,6 @@ document.addEventListener("DOMContentLoaded", () => {
     const sourceChasse = document.getElementById("sourceChasse");
 
     // Hide all by default
-    mpButton.style.display = "none";
     hwButton.style.display = "none";
     linkedInButton.style.display = "none";
 
@@ -26,9 +24,7 @@ document.addEventListener("DOMContentLoaded", () => {
     sourceChasse.checked = false;
 
     // Show the relevant button and pre-select the source type based on URL
-    if (url.includes("s-tom-1:90/MeilleurPilotage")) {
-      mpButton.style.display = "block";
-    } else if (url.includes("app-recruteur.hellowork.com")) {
+    if (url.includes("app-recruteur.hellowork.com")) {
       hwButton.style.display = "block";
       // Hellowork: "Annonce" for campaign or applicant detail pages
       if (url.includes("campaign/detail") || url.includes("applicant/detail")) {
@@ -250,7 +246,6 @@ document.addEventListener("DOMContentLoaded", () => {
   });
 
   // Récupération des éléments HTML de l'interface : champ de saisie et bouton d'exécution
-  const runMPButton = document.getElementById("runMPBtn");
   const runHwButton = document.getElementById("runHwBtn");
   const choixRecrBtn = document.getElementById("choixRecrBtn");
   const runWithJobIdBtn = document.getElementById("runWithJobIdBtn");
