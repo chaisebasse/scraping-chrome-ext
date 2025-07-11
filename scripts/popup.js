@@ -342,7 +342,9 @@ document.addEventListener("DOMContentLoaded", () => {
     maxCandidatesInput.step = 1; // A step of 1 is crucial for the 'input' event logic to detect stepper clicks.
 
     const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
-    const isProfilePage = tab?.url?.includes("/manage/all/profile/");
+    const url = tab?.url || "";
+    // This check now covers both types of profile pages, including applicant profiles.
+    const isProfilePage = url.includes("/manage/all/profile/") || url.includes("/discover/applicants/profile/");
     showScraperOptions(isProfilePage);
   });
 

@@ -1,47 +1,62 @@
 /**
- * @file background.js
- * @description Main background script, handles extension state and routing.
+ * @fileoverview Script d'arrière-plan principal de l'extension.
+ * @description Gère l'état global de l'extension, le routage des messages,
+ * l'interception des requêtes et les règles d'activation de l'icône.
  */
 
 import { handleInsertToMP, handleCandidateMessage } from './Insert/backgroundInsert.js';
 import { handleErrorMessage } from './Redirect/backgroundRedirect.js';
 
-// Set initial state of the action icon based on stored errors on startup
+/**
+ * Initialise l'état de l'icône de l'extension au démarrage.
+ * L'icône est activée s'il y a des erreurs stockées, sinon elle est désactivée
+ * (et son affichage sera géré par les règles `declarativeContent`).
+ */
 (async () => {
   const { storedErrors } = await chrome.storage.session.get(['storedErrors']);
   if (storedErrors && storedErrors.length > 0) {
     chrome.action.enable();
-    console.log("Errors found on startup. Enabling action icon globally.");
+    console.log("Erreurs détectées au démarrage. Activation globale de l'icône d'action.");
   } else {
     chrome.action.disable();
-    console.log("No errors on startup. Action icon will be controlled by page rules.");
+    console.log("Aucune erreur au démarrage. L'icône d'action sera contrôlée par les règles de la page.");
   }
 })();
 
-handleInsertToMP(); // Sets up the webRequest listener for CVs
+/**
+ * Met en place l'intercepteur de requêtes web pour capturer les CVs.
+ * Cette fonction est définie dans `backgroundInsert.js`.
+ */
+handleInsertToMP();
 
-// Central message router to prevent listener conflicts.
+/**
+ * Routeur de messages central pour l'extension.
+ * Écoute tous les messages et les délègue aux gestionnaires appropriés
+ * pour éviter les conflits entre plusieurs écouteurs `onMessage`.
+ * @returns {boolean} Vrai pour indiquer que la réponse sera envoyée de manière asynchrone.
+ */
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   (async () => {
-    // Try the candidate handler
     let result = await handleCandidateMessage(message, sender);
     if (result !== Symbol.for('messageNotHandled')) {
       sendResponse(result);
       return;
     }
 
-    // If not handled, try the error handler
     result = await handleErrorMessage(message, sender);
     if (result !== Symbol.for('messageNotHandled')) {
       sendResponse(result);
     }
   })();
-  return true; // Indicates that the response will be sent asynchronously.
+  return true;
 });
 
-// Événement déclenché lors de l'installation ou la mise à jour de l'extension
+/**
+ * Met en place les règles d'affichage de l'icône de l'extension lors de l'installation.
+ * Utilise `declarativeContent` pour afficher l'icône uniquement sur les pages cibles
+ * (MeilleurPilotage, Hellowork, LinkedIn Recruiter).
+ */
 chrome.runtime.onInstalled.addListener(() => {
-  // These rules are persistent across browser restarts.
   chrome.declarativeContent.onPageChanged.removeRules(undefined, () => {
     chrome.declarativeContent.onPageChanged.addRules([
       {
@@ -59,7 +74,6 @@ chrome.runtime.onInstalled.addListener(() => {
             },
           }),
         ],
-        // Show the action icon on matching pages.
         actions: [new chrome.declarativeContent.ShowAction()],
       },
     ]);

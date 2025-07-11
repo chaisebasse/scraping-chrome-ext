@@ -1,25 +1,45 @@
-// === Extraction du numéro interne et envoi du CV ===
-(async function () {
-  // NOTE: This script runs after a form submission. It relies on the context
-  // (profileUrl, source) being saved to sessionStorage by `Insert/content.js`
-  // before the form was submitted.
+/**
+ * @fileoverview Gère les actions post-soumission sur MeilleurPilotage.
+ * @description Ce script s'exécute après la soumission du formulaire de création de candidat.
+ * Il vérifie les erreurs d'insertion, et en cas de succès, extrait le numéro interne
+ * du candidat pour uploader le CV associé.
+ */
+
+// === Point d'Entrée & Logique Principale ===
+
+/**
+ * Point d'entrée principal du script post-soumission.
+ * S'exécute uniquement si le formulaire vient d'être soumis.
+ */
+(async function main() {
   if (!wasFormJustSubmitted()) return;
 
+  await handlePostSubmissionLogic();
+})();
+
+/**
+ * Orchestre la logique post-soumission : gestion des erreurs ou upload du CV.
+ */
+async function handlePostSubmissionLogic() {
   const insertionErrors = getInsertionErrors();
+
   if (insertionErrors.length > 0) {
-    chrome.runtime.sendMessage({
-      type: "addInsertionErrors",
-      payload: insertionErrors
-    });
-    sessionStorage.removeItem('submissionContext');
-    return; // Stop here if there are errors
+    handleInsertionFailure(insertionErrors);
+  } else {
+    await handleInsertionSuccess();
   }
 
-  // If no errors, it's a success. Handle CV upload and then close the tab.
+  sessionStorage.removeItem('submissionContext');
+}
+
+/**
+ * Gère le cas d'une insertion réussie.
+ * Extrait le FK, upload le CV si nécessaire, et demande la fermeture de l'onglet.
+ */
+async function handleInsertionSuccess() {
   const fk = extractFk();
   if (!fk) {
     console.warn("Échec de l'extraction du numéro interne. Le CV ne peut pas être uploadé et l'onglet ne sera pas fermé.");
-    sessionStorage.removeItem('submissionContext');
     return;
   }
 
@@ -31,20 +51,42 @@
 
   console.log("Candidat inséré avec succès. Fermeture de l'onglet...");
   chrome.runtime.sendMessage({ type: "close_successful_submission_tab" });
-  sessionStorage.removeItem('submissionContext');
-})();
+}
 
+/**
+ * Gère le cas d'une insertion échouée en envoyant les erreurs au background script.
+ * @param {Array<object>} errors - Le tableau des erreurs d'insertion.
+ */
+function handleInsertionFailure(errors) {
+  chrome.runtime.sendMessage({
+    type: "addInsertionErrors",
+    payload: errors
+  });
+}
+
+// === Extraction des Erreurs ===
+
+/**
+ * Vérifie si un texte d'erreur contient un type d'erreur spécifique.
+ * @param {string} text - Le texte à vérifier.
+ * @param {'duplicate' | 'mandatoryMissing'} errorType - Le type d'erreur à rechercher.
+ * @returns {boolean} Vrai si l'erreur est trouvée, sinon faux.
+ */
 function includesError(text, errorType) {
   if (errorType === "duplicate") {
     return text.includes("a déjà été créé");
   } else if (errorType === "mandatoryMissing") {
     return text.includes("Vous devez saisir le");
   }
+  return false;
 }
 
+/**
+ * Extrait et formate les erreurs d'insertion depuis la page de résultat.
+ * @returns {Array<object>} Un tableau d'objets d'erreur.
+ */
 function getInsertionErrors() {
   const errors = [];
-  // Retrieve context saved by the form-filling script before submission.
   const submissionContext = JSON.parse(
     sessionStorage.getItem("submissionContext") || "{}"
   );
@@ -52,7 +94,6 @@ function getInsertionErrors() {
   const mailErrorText = document.querySelector("mp\\:err_mail")?.innerText.trim() || "";
   const lastNameErrorText = document.querySelector("mp\\:err_nom")?.innerText.trim() || "";
   const firstNameErrorText = document.querySelector("mp\\:err_pren")?.innerText.trim() || "";
-
   const fullName = getFormName();
 
   if (includesError(mailErrorText, "duplicate") || includesError(lastNameErrorText, "duplicate")) {
@@ -60,7 +101,7 @@ function getInsertionErrors() {
       type: "duplicate",
       name: fullName,
       reason: "Même mail ou nom déjà utilisé.",
-      ...submissionContext // Add profileUrl and source
+      ...submissionContext
     });
   }
 
@@ -69,13 +110,17 @@ function getInsertionErrors() {
       type: "mandatoryMissing",
       name: fullName,
       reason: "Prénom ou nom manquant.",
-      ...submissionContext // Add profileUrl and source
+      ...submissionContext
     });
   }
 
   return errors;
 }
 
+/**
+ * Extrait le nom complet du candidat depuis le titre de la page.
+ * @returns {string} Le nom complet formaté, ou "Nom inconnu".
+ */
 function getFormName() {
   const titleText = document.title;
   const prefix = "Candidat";
@@ -97,11 +142,11 @@ function getFormName() {
   return `${prenom} ${nom}`.trim();
 }
 
+// === Logique d'Upload de CV ===
 
 /**
- * Vérifie si le formulaire vient d’être soumis (via sessionStorage).
- *
- * @returns {boolean} `true` si le formulaire vient juste d’être soumis, sinon `false`.
+ * Vérifie si le formulaire vient d’être soumis en consultant un flag dans sessionStorage.
+ * @returns {boolean} Vrai si le formulaire vient d'être soumis, sinon faux.
  */
 function wasFormJustSubmitted() {
   const flag = sessionStorage.getItem("justSubmittedCandidateForm");
@@ -113,9 +158,8 @@ function wasFormJustSubmitted() {
 }
 
 /**
- * Extrait le numéro interne (fk) affiché sur la page après soumission du formulaire.
- *
- * @returns {string|null} Le numéro interne extrait, ou `null` si non trouvé.
+ * Extrait le numéro interne (fk) du candidat affiché sur la page après soumission.
+ * @returns {string|null} Le numéro interne extrait, ou null si non trouvé.
  */
 function extractFk() {
   const container = document.querySelector("#FORM_PRIN");
@@ -125,34 +169,32 @@ function extractFk() {
   return match?.[1] || null;
 }
 
-// === Logique principale d'upload ===
-
 /**
- * Récupère le CV LinkedIn depuis le `sessionStorage` et l'envoie à MeilleurPilotage.
- *
+ * Orchestre la récupération et l'envoi du CV à MeilleurPilotage.
  * @param {string} fk - Le numéro interne du candidat (foreign key).
  */
 async function uploadCandidateCv(fk) {
   const cvBlob = await getScrapedCv();
   if (!cvBlob) {
+    console.warn("Aucun CV trouvé dans sessionStorage pour l'upload.");
     return;
   }
+
   try {
     const pk = await uploadPdfToMP(cvBlob, fk);
-    console.log("PDF uploadé, pk reçu :", pk);
+    console.log("PDF uploadé avec succès. PK reçu :", pk);
   } catch (err) {
     console.error("Erreur lors de l'upload du PDF :", err);
   }
 }
 
-// === Fonctions utilitaires ===
+// === Utilitaires de Gestion du CV ===
 
 /**
- * Convertit une chaîne base64 en objet Blob.
- *
- * @param {string} base64 - Données encodées en base64.
+ * Convertit une chaîne de caractères base64 en un objet Blob.
+ * @param {string} base64 - Les données du fichier encodées en base64.
  * @param {string} [contentType='application/pdf'] - Le type MIME du fichier.
- * @returns {Blob} Un objet Blob contenant le fichier décodé.
+ * @returns {Blob} Un objet Blob contenant les données décodées.
  */
 function base64ToBlob(base64, contentType = 'application/pdf') {
   const byteCharacters = atob(base64);
@@ -165,8 +207,23 @@ function base64ToBlob(base64, contentType = 'application/pdf') {
 }
 
 /**
- * Attend l’apparition du CV encodé en base64 dans le `sessionStorage`.
- *
+ * Tente de manière sécurisée de convertir le base64 en Blob et de résoudre la promesse.
+ * @param {string} base64 - Les données du CV encodées en base64.
+ * @param {Function} resolve - La fonction de résolution de la promesse parente.
+ * @param {Function} reject - La fonction de rejet de la promesse parente.
+ */
+function resolveSafeBlob(base64, resolve, reject) {
+  try {
+    const blob = base64ToBlob(base64);
+    resolve(blob);
+  } catch (err) {
+    console.error("Erreur lors de la conversion base64 vers Blob :", err);
+    reject(err);
+  }
+}
+
+/**
+ * Attend l’apparition du CV encodé en base64 dans `sessionStorage`.
  * @param {number} [timeout=5000] - Temps maximal d’attente en millisecondes.
  * @returns {Promise<Blob>} Une promesse qui se résout avec le Blob du CV.
  */
@@ -176,37 +233,28 @@ function getScrapedCv(timeout = 5000) {
   return new Promise((resolve, reject) => {
     const tryResolveCv = () => {
       const base64 = sessionStorage.getItem("scrapedCvBase64");
-      if (base64) return resolveSafeBlob(base64, resolve, reject);
+      if (base64) {
+        return resolveSafeBlob(base64, resolve, reject);
+      }
 
-      if (Date.now() < deadline) setTimeout(tryResolveCv, 300);
+      if (Date.now() < deadline) {
+        setTimeout(tryResolveCv, 300);
+      } else {
+        reject(new Error("Timeout: Le CV n'a pas été trouvé dans sessionStorage."));
+      }
     };
 
     tryResolveCv();
   });
 }
 
-/**
- * Tente de convertir le base64 en Blob et de le retourner via `resolve`, sinon rejette.
- *
- * @param {string} base64 - Données encodées en base64.
- * @param {Function} resolve - Fonction à appeler en cas de succès.
- * @param {Function} reject - Fonction à appeler en cas d’erreur.
- */
-function resolveSafeBlob(base64, resolve, reject) {
-  try {
-    const blob = base64ToBlob(base64);
-    resolve(blob);
-  } catch (err) {
-    reject(err);
-  }
-}
+// === Communication avec MeilleurPilotage ===
 
 /**
- * Envoie le fichier PDF au serveur MP via un POST multipart/form-data.
- *
- * @param {Blob} pdfBlob - Le fichier PDF à envoyer.
- * @param {string} fk - Le numéro interne du candidat (foreign key).
- * @returns {Promise<string|null>} Le `pk` renvoyé par le serveur ou `null`.
+ * Envoie le fichier PDF au serveur MP via une requête POST multipart/form-data.
+ * @param {Blob} pdfBlob - Le fichier PDF (CV) à uploader.
+ * @param {string} fk - Le numéro interne (foreign key) du candidat auquel lier le CV.
+ * @returns {Promise<string|null>} Une promesse qui se résout avec le `pk` (primary key) du CV uploadé, ou `null`.
  */
 async function uploadPdfToMP(pdfBlob, fk) {
   const formData = buildCvFormData(pdfBlob, fk);
@@ -220,9 +268,8 @@ async function uploadPdfToMP(pdfBlob, fk) {
 }
 
 /**
- * Construit l’objet `FormData` utilisé pour l’upload du CV.
- *
- * @param {Blob} pdfBlob - Le fichier PDF à inclure.
+ * Construit l’objet `FormData` nécessaire pour la requête d'upload du CV.
+ * @param {Blob} pdfBlob - Le fichier PDF à inclure dans le formulaire.
  * @param {string} fk - Le numéro interne du candidat.
  * @returns {FormData} L’objet FormData prêt à être envoyé.
  */
@@ -237,9 +284,8 @@ function buildCvFormData(pdfBlob, fk) {
 }
 
 /**
- * Extrait la valeur du champ `pk` depuis la réponse HTML retournée par le serveur.
- *
- * @param {string} html - Le HTML complet de la réponse.
+ * Extrait la valeur de la clé primaire (`pk`) du CV depuis la réponse HTML du serveur.
+ * @param {string} html - Le contenu HTML complet de la réponse du serveur.
  * @returns {string|null} La valeur du champ `pk`, ou `null` si non trouvée.
  */
 function extractPkFromHtml(html) {
