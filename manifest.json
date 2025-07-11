@@ -2,7 +2,7 @@
   "manifest_version": 3,
   "name": "Data extraction",
   "version": "1.0",
-  "description": "Extract data from LinkedIn and internal tables",
+  "description": "Extrait les données de sites de recrutement et les envoie sur MP",
 
   "action": {
     "default_title": "Run table scraper",

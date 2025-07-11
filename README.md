@@ -224,3 +224,13 @@ Cela signifie que les attributs `name` des champs du formulaire dans MP ont chan
     - Trouver la requête POST nommée `Gestion` dans la liste.
     - Cliquer dessus et inspecter l'onglet "Charge utile" (Payload). Cela montre les données exactes envoyées au serveur (ex: `MP:NOM=Dupont&MP:PREN=Jean`).
     - Comparer ces données avec ce qui est attendu et ce qui est visible sur le profil du candidat dans MP. Cela permet de déterminer si le problème vient des données envoyées par l'extension ou de leur traitement par MeilleurPilotage.
+
+---
+
+## 6. Améliorations possibles
+
+Voici une liste d'améliorations qui pourraient être apportées pour rendre l'extension encore plus robuste et maintenable :
+
+- **Centraliser la configuration :** Actuellement, de nombreuses valeurs (sélecteurs CSS, URLs) sont encore codées en dur dans les scripts. Le fichier `config.js` a été créé pour centraliser ces valeurs. Connecter ce fichier à l'ensemble de l'extension rendrait la maintenance beaucoup plus simple. Par exemple, au lieu de modifier `scripts/LinkedIn/content.js` pour un sélecteur, la modification se ferait en un seul endroit dans `config.js`.
+
+- **Factoriser les fonctions utilitaires :** Les scripts `LinkedIn/content.js` et `HelloWork/content.js` contiennent des fonctions utilitaires dupliquées (comme `delay`, `getRandomInRange`, etc.). Celles-ci pourraient être déplacées dans `scripts/common/domUtils.js` pour éviter la redondance de code et simplifier les mises à jour.
