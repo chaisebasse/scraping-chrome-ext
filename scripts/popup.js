@@ -1,108 +1,92 @@
-// Attend que le DOM soit complètement chargé avant d'exécuter le script
+/**
+ * @fileoverview Gère l'interface utilisateur de la popup de l'extension.
+ * @description Ce script contrôle la navigation entre les pages de la popup,
+ * la configuration des options de scraping (source, nombre de candidats),
+ * la récupération des recherches associées depuis MP, et l'affichage des erreurs.
+ */
+
 document.addEventListener("DOMContentLoaded", () => {
-    /**
-   * Updates the visibility of buttons in the popup based on the current tab's URL.
+  /**
+   * @typedef {Object} ui Dictionnaire des éléments de l'interface utilisateur.
+   */
+  const ui = {
+    mainPage: document.getElementById("mainPage"),
+    choixRecherchePage: document.getElementById("choixRecherche"),
+    errorsPage: document.getElementById("pageErreurs"),
+    hwButton: document.getElementById("runHwBtn"),
+    linkedInButton: document.getElementById("choixRecrBtn"),
+    showErrorsBtn: document.getElementById("showErrorsBtn"),
+    runWithJobIdBtn: document.getElementById("runWithJobIdBtn"),
+    refreshJobIdsBtn: document.getElementById("refreshJobIdsBtn"),
+    backBtn: document.getElementById("backBtn"),
+    clearErrorsBtn: document.getElementById("clearErrorsBtn"),
+    jobInput: document.getElementById("recrAssocInput"),
+    jobDatalist: document.getElementById("recrAssocList"),
+    maxCandidatesInput: document.getElementById("maxCandidatesInput"),
+    maxCandidatesLabel: document.querySelector('label[for="maxCandidatesInput"]'),
+    sourceAnnonceRadio: document.getElementById("sourceAnnonce"),
+    sourceChasseRadio: document.getElementById("sourceChasse"),
+    errorListDiv: document.getElementById("errorList"),
+  };
+
+  /**
+   * @typedef {Object} state L'état interne de la popup.
+   */
+  const state = {
+    jobLabelToIdMap: {},
+    pendingScraperAction: null,
+    maxCandidatesValueBeforeChange: null,
+  };
+
+  // === Initialisation de l'UI ===
+
+  /**
+   * Met à jour l'interface en fonction de l'URL de l'onglet actif.
+   * Affiche les boutons pertinents (LinkedIn/Hellowork) et présélectionne le type de source.
    */
   async function updateUserInterface() {
     const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
     const url = tab?.url || "";
 
-    // Get all buttons
-    const hwButton = document.getElementById("runHwBtn");
-    const linkedInButton = document.getElementById("choixRecrBtn");
+    const { hwButton, linkedInButton, sourceAnnonceRadio, sourceChasseRadio } = ui;
 
-    // Get radio buttons to pre-select them based on the URL context
-    const sourceAnnonce = document.getElementById("sourceAnnonce");
-    const sourceChasse = document.getElementById("sourceChasse");
-
-    // Hide all by default
     hwButton.style.display = "none";
     linkedInButton.style.display = "none";
+    sourceAnnonceRadio.checked = false;
+    sourceChasseRadio.checked = false;
 
-    // Reset radio buttons to ensure a clean state on each popup open
-    sourceAnnonce.checked = false;
-    sourceChasse.checked = false;
-
-    // Show the relevant button and pre-select the source type based on URL
     if (url.includes("app-recruteur.hellowork.com")) {
       hwButton.style.display = "block";
-      // Hellowork: "Annonce" for campaign or applicant detail pages
       if (url.includes("campaign/detail") || url.includes("applicant/detail")) {
-        sourceAnnonce.checked = true;
+        sourceAnnonceRadio.checked = true;
       }
     } else if (url.includes("linkedin.com/talent/")) {
       linkedInButton.style.display = "block";
-      // LinkedIn: "Annonce" for applicant discovery from a job
       if (url.includes("discover/applicants")) {
-        sourceAnnonce.checked = true;
-      // LinkedIn: "Chasse" for general profile management or projects
+        sourceAnnonceRadio.checked = true;
       } else if (url.includes("manage/all")) {
-        sourceChasse.checked = true;
+        sourceChasseRadio.checked = true;
       }
     }
   }
 
-  async function getStoredJobIds() {
-    const result = await chrome.storage.local.get(["jobIds"]);
-    return result.jobIds || [];
-  }
-
-  async function saveJobIds(jobIds) {
-    await chrome.storage.local.set({ jobIds });
-  }
-
-  async function getLastSelectedJobId() {
-    const result = await chrome.storage.local.get(["lastJobId"]);
-    return result.lastJobId || "";
-  }
-
-  async function setLastSelectedJobId(jobId) {
-    await chrome.storage.local.set({ lastJobId: jobId });
-  }
-
-  const jobInput = document.getElementById("recrAssocInput");
-  const jobDatalist = document.getElementById("recrAssocList");
-  const maxCandidatesInput = document.getElementById("maxCandidatesInput");
-  const maxCandidatesLabel = document.querySelector('label[for="maxCandidatesInput"]');
-  let jobLabelToIdMap = {};
-  // This variable will hold the value of the input right before a change,
-  // which helps us determine the direction of a click on the stepper arrows.
-  let valueBeforeChange = null;
-
   /**
-   * Applies the custom stepping logic for LinkedIn.
-   * @param {number} currentValue The number before the step.
-   * @param {'up' | 'down'} direction The direction of the step.
-   * @returns {number} The new value after applying the custom step.
+   * Remplit la datalist des recherches associées avec les données stockées.
+   * Présélectionne la dernière recherche utilisée.
    */
-  function getNewSteppedValue(currentValue, direction) {
-    let newValue = currentValue;
-
-    if (direction === 'up') {
-      // Custom logic: from 2, it jumps to 25. Otherwise, it adds 25.
-      newValue = (currentValue === 2) ? 25 : currentValue + 25;
-    } else { // 'down'
-      // Custom logic: from 25, it jumps to 2. Otherwise, it subtracts 25.
-      newValue = (currentValue === 25) ? 2 : currentValue - 25;
-    }
-
-    // The final value is always clamped to the [2, 100] range.
-    return Math.min(100, Math.max(2, newValue));
-  }
-
   async function populateJobDatalist() {
-    const jobIds = await getStoredJobIds();
-    const lastSelectedId = await getLastSelectedJobId();
+    const jobIds = await Storage.getJobIds();
+    const lastSelectedId = await Storage.getLastSelectedJobId();
 
-    jobDatalist.innerHTML = "";
-    jobLabelToIdMap = {};
+    ui.jobDatalist.innerHTML = "";
+    state.jobLabelToIdMap = {};
     let lastSelectedLabel = "";
 
     jobIds.forEach(({ label, value }) => {
       const option = document.createElement("option");
       option.value = label;
-      jobDatalist.appendChild(option);
-      jobLabelToIdMap[label] = value;
+      ui.jobDatalist.appendChild(option);
+      state.jobLabelToIdMap[label] = value;
 
       if (value === lastSelectedId) {
         lastSelectedLabel = label;
@@ -110,409 +94,512 @@ document.addEventListener("DOMContentLoaded", () => {
     });
 
     if (lastSelectedLabel) {
-      jobInput.value = lastSelectedLabel;
+      ui.jobInput.value = lastSelectedLabel;
     }
   }
 
+  // === Gestion du Stockage ===
+
+  const Storage = {
+    getJobIds: async () => (await chrome.storage.local.get("jobIds")).jobIds || [],
+    saveJobIds: (jobIds) => chrome.storage.local.set({ jobIds }),
+    getLastSelectedJobId: async () => (await chrome.storage.local.get("lastJobId")).lastJobId || "",
+    setLastSelectedJobId: (jobId) => chrome.storage.local.set({ lastJobId: jobId }),
+  };
+
+  // === Initialisation ===
   updateUserInterface();
   populateJobDatalist();
 
-  maxCandidatesInput.addEventListener("change", () => {
-    const value = parseInt(maxCandidatesInput.value, 10);
-    const min = parseInt(maxCandidatesInput.min, 10) || 2;
+  // === Gestion des Champs de Formulaire ===
+
+  /**
+   * Applique la logique de pas personnalisée pour LinkedIn (2, 25, 50, 75, 100).
+   * @param {number} currentValue - La valeur avant le pas.
+   * @param {'up' | 'down'} direction - La direction du pas.
+   * @returns {number} La nouvelle valeur après application du pas personnalisé.
+   */
+  function getNewSteppedValue(currentValue, direction) {
+    let newValue = currentValue;
+    if (direction === 'up') {
+      newValue = (currentValue === 2) ? 25 : currentValue + 25;
+    } else {
+      newValue = (currentValue === 25) ? 2 : currentValue - 25;
+    }
+    return Math.min(100, Math.max(2, newValue));
+  }
+
+  /**
+   * Valide et bride la valeur de l'input du nombre maximum de candidats.
+   */
+  function handleMaxCandidatesChange() {
+    const value = parseInt(ui.maxCandidatesInput.value, 10);
+    const min = parseInt(ui.maxCandidatesInput.min, 10) || 2;
     if (value > 100) {
       alert("Le nombre maximum de candidats à scraper est de 100.");
-      maxCandidatesInput.value = 100;
+      ui.maxCandidatesInput.value = 100;
     }
     if (value < min) {
-      maxCandidatesInput.value = min;
+      ui.maxCandidatesInput.value = min;
     }
-  });
+  }
 
-  // For custom stepping, we need to know the value *before* the change.
-  // 'mousedown' is a good event to capture this before a click on the stepper arrows.
-  maxCandidatesInput.addEventListener('mousedown', () => {
-    if (maxCandidatesInput.getAttribute('data-custom-step') === 'true') {
-      valueBeforeChange = parseInt(maxCandidatesInput.value, 10);
+  /**
+   * Capture la valeur de l'input avant un changement pour la logique de pas personnalisé.
+   */
+  function handleMaxCandidatesMouseDown() {
+    if (ui.maxCandidatesInput.getAttribute('data-custom-step') === 'true') {
+      state.maxCandidatesValueBeforeChange = parseInt(ui.maxCandidatesInput.value, 10);
     }
-  });
+  }
 
-  // The 'input' event fires for both keyboard typing and stepper arrow clicks.
-  maxCandidatesInput.addEventListener('input', () => {
-    // Only apply custom logic if it's for LinkedIn and we have a pre-change value.
-    if (maxCandidatesInput.getAttribute('data-custom-step') !== 'true' || valueBeforeChange === null) {
+  /**
+   * Gère l'événement 'input' pour appliquer le pas personnalisé lors d'un clic sur les flèches.
+   */
+  function handleMaxCandidatesInput() {
+    if (ui.maxCandidatesInput.getAttribute('data-custom-step') !== 'true' || state.maxCandidatesValueBeforeChange === null) {
       return;
     }
 
-    const currentValue = parseInt(maxCandidatesInput.value, 10);
-
-    // This heuristic detects if the change was from a stepper click (which changes the value by 'step', i.e., 1)
-    // and not from the user typing a number manually.
-    if (Math.abs(currentValue - valueBeforeChange) === 1) {
-      const direction = currentValue > valueBeforeChange ? 'up' : 'down';
-      maxCandidatesInput.value = getNewSteppedValue(valueBeforeChange, direction);
+    const currentValue = parseInt(ui.maxCandidatesInput.value, 10);
+    if (Math.abs(currentValue - state.maxCandidatesValueBeforeChange) === 1) {
+      const direction = currentValue > state.maxCandidatesValueBeforeChange ? 'up' : 'down';
+      ui.maxCandidatesInput.value = getNewSteppedValue(state.maxCandidatesValueBeforeChange, direction);
     }
-    // Reset for the next interaction.
-    valueBeforeChange = null;
-  });
+    state.maxCandidatesValueBeforeChange = null;
+  }
 
-  maxCandidatesInput.addEventListener('keydown', (event) => {
-    // Only apply custom stepping logic when LinkedIn is selected (identified by data-custom-step)
-    if (maxCandidatesInput.getAttribute('data-custom-step') !== 'true') {
+  /**
+   * Gère les touches fléchées pour appliquer le pas personnalisé.
+   * @param {KeyboardEvent} event - L'événement clavier.
+   */
+  function handleMaxCandidatesKeyDown(event) {
+    if (ui.maxCandidatesInput.getAttribute('data-custom-step') !== 'true') {
       return;
     }
 
     if (event.key === 'ArrowUp' || event.key === 'ArrowDown') {
-      event.preventDefault(); // Prevent the default browser action.
-      const currentValue = parseInt(maxCandidatesInput.value, 10);
-      if (isNaN(currentValue)) {
-        maxCandidatesInput.value = 2; // Default to min if the field is empty
-        return;
-      }
-
+      event.preventDefault();
+      const currentValue = parseInt(ui.maxCandidatesInput.value, 10) || 2;
       const direction = event.key === 'ArrowUp' ? 'up' : 'down';
-      maxCandidatesInput.value = getNewSteppedValue(currentValue, direction);
+      ui.maxCandidatesInput.value = getNewSteppedValue(currentValue, direction);
     }
-  });
+  }
 
-  jobInput.addEventListener("input", () => {
-    const currentLabel = jobInput.value;
-    const selectedId = jobLabelToIdMap[currentLabel];
+  /**
+   * Sauvegarde l'ID de la recherche associée sélectionnée lorsqu'elle change.
+   */
+  function handleJobIdInput() {
+    const currentLabel = ui.jobInput.value;
+    const selectedId = state.jobLabelToIdMap[currentLabel];
     if (selectedId) {
-      setLastSelectedJobId(selectedId);
+      Storage.setLastSelectedJobId(selectedId);
     }
-  });
+  }
 
-  const refreshJobIdsBtn = document.getElementById("refreshJobIdsBtn");
+  /**
+   * Attache les écouteurs d'événements aux champs du formulaire.
+   */
+  function setupFormListeners() {
+    ui.maxCandidatesInput.addEventListener("change", handleMaxCandidatesChange);
+    ui.maxCandidatesInput.addEventListener('mousedown', handleMaxCandidatesMouseDown);
+    ui.maxCandidatesInput.addEventListener('input', handleMaxCandidatesInput);
+    ui.maxCandidatesInput.addEventListener('keydown', handleMaxCandidatesKeyDown);
+    ui.jobInput.addEventListener("input", handleJobIdInput);
+  }
 
-  refreshJobIdsBtn.addEventListener("click", async () => {
-    const targetUrl = "http://s-tom-1:90/MeilleurPilotage/servlet/Gestion?CONVERSATION=RECR_GestionCandidat&ACTION=CREE&MAJ=N";
+  setupFormListeners();
 
-    let targetTab;
+  // === Logique de Rafraîchissement des Recherches Associées ===
 
-    // 1. Try to find an open tab with the right URL
+  /**
+   * Trouve un onglet MP existant ou en crée un nouveau.
+   * @param {string} targetUrl - L'URL du formulaire de création de candidat MP.
+   * @returns {Promise<{tab: chrome.tabs.Tab, created: boolean}>} Un objet contenant l'onglet et un booléen indiquant s'il a été créé.
+   */
+  async function findOrCreateMpTab(targetUrl) {
     const tabs = await chrome.tabs.query({});
-    for (const tab of tabs) {
-      if (tab.url && tab.url.includes(targetUrl)) {
-        targetTab = tab;
-        break;
-      }
+    const existingTab = tabs.find(tab => tab.url && tab.url.includes(targetUrl));
+
+    if (existingTab) {
+      return { tab: existingTab, created: false };
     }
 
-    // 2. If not found, open a new one
-    if (!targetTab) {
-      targetTab = await chrome.tabs.create({ url: targetUrl, active: false });
+    const newTab = await chrome.tabs.create({ url: targetUrl, active: false });
+    await waitForTabLoad(newTab.id);
+    return { tab: newTab, created: true };
+  }
 
-      // Wait for the tab to load before injecting
-      await new Promise((resolve) => {
-        const listener = (tabId, changeInfo) => {
-          if (tabId === targetTab.id && changeInfo.status === "complete") {
-            chrome.tabs.onUpdated.removeListener(listener);
-            resolve();
-          }
-        };
-        chrome.tabs.onUpdated.addListener(listener);
-      });
-    }
-
-    // 3. Inject script and scrape
-    try {
-      await chrome.scripting.executeScript({
-        target: { tabId: targetTab.id },
-        files: ["scripts/MP/content.js"],
-      });
-
-      chrome.tabs.sendMessage(targetTab.id, { action: "get_job_ids" }, async (response) => {
-        if (chrome.runtime.lastError) {
-          console.error("Erreur:", chrome.runtime.lastError.message);
-          return;
+  /**
+   * Attend que le chargement d'un onglet soit terminé.
+   * @param {number} tabId - L'ID de l'onglet à surveiller.
+   */
+  function waitForTabLoad(tabId) {
+    return new Promise((resolve) => {
+      const listener = (updatedTabId, changeInfo) => {
+        if (updatedTabId === tabId && changeInfo.status === "complete") {
+          chrome.tabs.onUpdated.removeListener(listener);
+          resolve();
         }
-
-        if (response?.jobIds?.length) {
-          await saveJobIds(response.jobIds);
-          await populateJobDatalist();
-
-          // 4. Optional: close tab if we opened it
-          if (targetTab.url !== tabs.find(t => t.id === targetTab.id)?.url) {
-            chrome.tabs.remove(targetTab.id);
-          }
-        } else {
-          alert("Aucune recherche trouvée.");
-        }
-      });
-    } catch (err) {
-      console.error("Erreur d'injection sur l'onglet MP :", err);
-    }
-  });
-
-  // Récupération des éléments HTML de l'interface : champ de saisie et bouton d'exécution
-  const runHwButton = document.getElementById("runHwBtn");
-  const choixRecrBtn = document.getElementById("choixRecrBtn");
-  const runWithJobIdBtn = document.getElementById("runWithJobIdBtn");
-  const choixRecherche = document.getElementById("choixRecherche");
-
-  // Variable pour stocker l'action de scraping en attente après le choix du Job ID
-  let pendingScraperAction = null;
-
-  // Lors du clic sur le bouton, on déclenche l'injection du script + le scraping
-  function injectAndSend(scriptPath, messageAction) {
-    chrome.tabs.query({ active: true, currentWindow: true }, async ([tab]) => {
-      if (!tab?.id) return;
- 
-      // Read the value from the input and ensure it's a valid number.
-      const maxCandidates = parseInt(maxCandidatesInput.value, 10) || 50;
-      const sourceType = document.querySelector('input[name="sourceType"]:checked')?.value || null;
- 
-      const isHelloworkScraper = scriptPath.startsWith("scripts/HelloWork/");
-      // Only reload if starting a scrape from a single candidate's detail page.
-      // This avoids reloading the list page unnecessarily.
-      const isHelloworkProfileUrl = tab.url && tab.url.includes("app-recruteur.hellowork.com/applicant/detail/");
- 
-      try {
-        if (isHelloworkScraper && isHelloworkProfileUrl) {
-          console.log(`[Popup] Reloading Hellowork tab ${tab.id} before scraping...`);
-          // 1. Reload the current tab
-          chrome.tabs.reload(tab.id);
-
-          // 2. Wait for the tab to finish loading after reload
-          await new Promise((resolve) => {
-            const listener = (tabId, changeInfo) => {
-              if (tabId === tab.id && changeInfo.status === "complete") {
-                chrome.tabs.onUpdated.removeListener(listener);
-                console.log(`[Popup] Hellowork tab ${tab.id} reloaded. Proceeding with script injection.`);
-                resolve();
-              }
-            };
-            chrome.tabs.onUpdated.addListener(listener);
-          });
-        }
-
-        await chrome.scripting.executeScript({
-          target: { tabId: tab.id },
-          files: [
-            "scripts/common/domUtils.js", // Inject the helpers first
-            scriptPath
-          ],
-        });
-
-        chrome.tabs.sendMessage(tab.id, { action: messageAction, maxCandidates, sourceType }, (response) => {
-          if (chrome.runtime.lastError) {
-            console.error("Erreur lors de l'envoi du message :", chrome.runtime.lastError.message);
-          }
-        });
-      } catch (err) {
-        console.error("Échec de l'injection du script :", err);
-      }
+      };
+      chrome.tabs.onUpdated.addListener(listener);
     });
   }
 
-  async function showScraperOptions(isProfilePage) {
-    maxCandidatesInput.style.display = isProfilePage ? 'none' : 'block';
-    maxCandidatesLabel.style.display = isProfilePage ? 'none' : 'block';
-    showPage(choixRecherche, mainPage);
+  /**
+   * Gère la réponse contenant les recherches associées.
+   * @param {object} response - La réponse du content script.
+   * @param {boolean} shouldCloseTab - Indique si l'onglet MP doit être fermé.
+   * @param {number} tabId - L'ID de l'onglet MP.
+   */
+  async function handleJobIdResponse(response, shouldCloseTab, tabId) {
+    if (chrome.runtime.lastError) {
+      console.error("Erreur de communication avec l'onglet MP :", chrome.runtime.lastError.message);
+      return;
+    }
+
+    if (response?.jobIds?.length) {
+      await Storage.saveJobIds(response.jobIds);
+      await populateJobDatalist();
+      if (shouldCloseTab) {
+        chrome.tabs.remove(tabId);
+      }
+    } else {
+      alert("Aucune recherche associée active n'a été trouvée sur MeilleurPilotage.");
+    }
   }
 
-  // Bouton pour Hellowork - Affiche la page de sélection du Job ID
-  runHwButton.addEventListener("click", async () => {
-    pendingScraperAction = {
-      scriptPath: "scripts/HelloWork/content.js",
-      messageAction: "runHwScraper"
-    };
-    // Set defaults for Hellowork
-    maxCandidatesInput.min = 2;
-    maxCandidatesInput.value = 50;
-    maxCandidatesInput.setAttribute('data-custom-step', 'false');
-    maxCandidatesInput.step = 1;
+  /**
+   * Gère le clic sur le bouton de rafraîchissement des recherches associées.
+   */
+  async function handleRefreshJobIdsClick() {
+    const targetUrl = "http://s-tom-1:90/MeilleurPilotage/servlet/Gestion?CONVERSATION=RECR_GestionCandidat&ACTION=CREE&MAJ=N";
+    const { tab, created } = await findOrCreateMpTab(targetUrl);
 
-    const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
-    const isProfilePage = tab?.url?.includes("app-recruteur.hellowork.com/applicant/detail/");
-    showScraperOptions(isProfilePage);
-  });
-
-  // Bouton pour LinkedIn - Affiche la page de sélection du Job ID
-  choixRecrBtn.addEventListener("click", async () => {
-    pendingScraperAction = {
-      scriptPath: "scripts/LinkedIn/content.js",
-      messageAction: "runLinkedinScraper"
-    };
-    // Set defaults for LinkedIn
-    maxCandidatesInput.min = 2; // Allow manual input down to 2
-    maxCandidatesInput.value = 25;
-    maxCandidatesInput.setAttribute('data-custom-step', 'true');
-    maxCandidatesInput.step = 1; // A step of 1 is crucial for the 'input' event logic to detect stepper clicks.
-
-    const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
-    const url = tab?.url || "";
-    // This check now covers both types of profile pages, including applicant profiles.
-    const isProfilePage = url.includes("/manage/all/profile/") || url.includes("/discover/applicants/profile/");
-    showScraperOptions(isProfilePage);
-  });
-
-  // Bouton pour démarrer le scraping (LinkedIn ou Hellowork) après le choix
-  runWithJobIdBtn.addEventListener("click", () => {
-    if (pendingScraperAction) {
-      injectAndSend(pendingScraperAction.scriptPath, pendingScraperAction.messageAction);
+    try {
+      await chrome.scripting.executeScript({
+        target: { tabId: tab.id },
+        files: ["scripts/MP/content.js"],
+      });
+      chrome.tabs.sendMessage(tab.id, { action: "get_job_ids" }, (response) => handleJobIdResponse(response, created, tab.id));
+    } catch (err) {
+      console.error("Erreur d'injection sur l'onglet MP :", err);
     }
-  });
+  }
 
-  const mainPage = document.getElementById("mainPage");
-  const errorPage = document.getElementById("pageErreurs");
-  const showErrorsBtn = document.getElementById("showErrorsBtn");
-  const backBtn = document.getElementById("backBtn");
-  const clearErrorsBtn = document.getElementById("clearErrorsBtn");
-  
+  ui.refreshJobIdsBtn.addEventListener("click", handleRefreshJobIdsClick);
+
+  // === Logique de Lancement du Scraper ===
+
+  /**
+   * Récupère la configuration du scraper depuis l'UI.
+   * @returns {{maxCandidates: number, sourceType: string|null}}
+   */
+  function getScraperConfig() {
+    const maxCandidates = parseInt(ui.maxCandidatesInput.value, 10) || 50;
+    const sourceType = document.querySelector('input[name="sourceType"]:checked')?.value || null;
+    return { maxCandidates, sourceType };
+  }
+
+  /**
+   * Recharge une page de profil Hellowork avant de scraper pour garantir un état propre.
+   * @param {chrome.tabs.Tab} tab - L'onglet actif.
+   */
+  async function reloadHelloworkProfilePage(tab) {
+    const isHelloworkProfile = tab.url?.includes("app-recruteur.hellowork.com/applicant/detail/");
+    if (isHelloworkProfile) {
+      console.log(`[Popup] Rechargement de l'onglet Hellowork ${tab.id} avant le scraping...`);
+      chrome.tabs.reload(tab.id);
+      await waitForTabLoad(tab.id);
+      console.log(`[Popup] Onglet Hellowork ${tab.id} rechargé.`);
+    }
+  }
+
+  /**
+   * Injecte les scripts nécessaires et envoie le message pour démarrer le scraping.
+   * @param {number} tabId - L'ID de l'onglet cible.
+   * @param {object} action - L'objet d'action en attente.
+   * @param {object} config - La configuration du scraper.
+   */
+  async function injectAndRunScraper(tabId, action, config) {
+    try {
+      await chrome.scripting.executeScript({
+        target: { tabId },
+        files: [
+          "scripts/common/domUtils.js",
+          action.scriptPath,
+        ],
+      });
+
+      chrome.tabs.sendMessage(tabId, { action: action.messageAction, ...config }, (response) => {
+        if (chrome.runtime.lastError) {
+          console.error("Erreur lors de l'envoi du message :", chrome.runtime.lastError.message);
+        }
+      });
+    } catch (err) {
+      console.error("Échec de l'injection du script :", err);
+    }
+  }
+
+  /**
+   * Gère le clic sur le bouton "Démarrer récolte données".
+   * Orchestre le rechargement (si nécessaire), l'injection et le lancement du scraper.
+   */
+  async function handleRunScraperClick() {
+    if (!state.pendingScraperAction) return;
+
+    const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
+    if (!tab?.id) return;
+
+    const config = getScraperConfig();
+    const isHelloworkScraper = state.pendingScraperAction.scriptPath.includes("HelloWork");
+
+    if (isHelloworkScraper) {
+      await reloadHelloworkProfilePage(tab);
+    }
+
+    await injectAndRunScraper(tab.id, state.pendingScraperAction, config);
+  }
+
+  ui.runWithJobIdBtn.addEventListener("click", handleRunScraperClick);
+
+  // === Navigation & Configuration des Scrapers ===
+
+  /**
+   * Affiche la page de configuration du scraper, en masquant l'input du nombre max si sur une page de profil.
+   * @param {boolean} isProfilePage - Vrai si l'onglet actif est une page de profil.
+   */
+  function showScraperOptions(isProfilePage) {
+    ui.maxCandidatesInput.style.display = isProfilePage ? 'none' : 'block';
+    ui.maxCandidatesLabel.style.display = isProfilePage ? 'none' : 'block';
+    showPage(ui.choixRecherchePage, ui.mainPage);
+  }
+
+  /**
+   * Configure les options du scraper pour une source spécifique (LinkedIn ou Hellowork).
+   * @param {object} config - La configuration de la source.
+   * @param {number} config.min - La valeur minimale pour maxCandidates.
+   * @param {number} config.value - La valeur par défaut pour maxCandidates.
+   * @param {boolean} config.customStep - Si le pas personnalisé doit être activé.
+   */
+  function configureScraperSource({ min, value, customStep }) {
+    ui.maxCandidatesInput.min = min;
+    ui.maxCandidatesInput.value = value;
+    ui.maxCandidatesInput.setAttribute('data-custom-step', customStep.toString());
+    ui.maxCandidatesInput.step = 1;
+  }
+
+  /**
+   * Gère la sélection d'un type de scraper (LinkedIn ou Hellowork).
+   * @param {object} action - L'action de scraping à mettre en attente.
+   * @param {object} config - La configuration UI pour cette source.
+   * @param {function(string): boolean} isProfilePageCheck - Une fonction pour vérifier si c'est une page de profil.
+   */
+  async function handleScraperSelection(action, config, isProfilePageCheck) {
+    state.pendingScraperAction = action;
+    configureScraperSource(config);
+
+    const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
+    const isProfilePage = isProfilePageCheck(tab?.url || "");
+    showScraperOptions(isProfilePage);
+  }
+
+  /**
+   * Attache les écouteurs aux boutons de sélection de scraper.
+   */
+  function setupScraperSelectionListeners() {
+    ui.hwButton.addEventListener("click", () => {
+      handleScraperSelection(
+        { scriptPath: "scripts/HelloWork/content.js", messageAction: "runHwScraper" },
+        { min: 2, value: 50, customStep: false },
+        (url) => url.includes("app-recruteur.hellowork.com/applicant/detail/")
+      );
+    });
+
+    ui.linkedInButton.addEventListener("click", () => {
+      handleScraperSelection(
+        { scriptPath: "scripts/LinkedIn/content.js", messageAction: "runLinkedinScraper" },
+        { min: 2, value: 25, customStep: true },
+        (url) => url.includes("/manage/all/profile/") || url.includes("/discover/applicants/profile/")
+      );
+    });
+  }
+
+  setupScraperSelectionListeners();
+
+  // === Navigation entre les Pages de la Popup ===
+
   function showPage(pageToShow, pageToHide) {
     pageToHide.classList.remove("active");
     pageToShow.classList.add("active");
   }
 
-  showErrorsBtn.addEventListener("click", async () => {
+  ui.showErrorsBtn.addEventListener("click", async () => {
     try {
       const errors = await chrome.runtime.sendMessage({ type: "getInsertionErrors" });
       showErrorsInPopup(errors || []);
     } catch (error) {
-      console.warn("No response from background:", error.message);
+      console.warn("Aucune réponse du background:", error.message);
       showErrorsInPopup([]);
     }
-    showPage(errorPage, mainPage);
+    showPage(ui.errorsPage, ui.mainPage);
   });
 
-  backBtn.addEventListener("click", () => {
-    showPage(mainPage, errorPage);
+  ui.backBtn.addEventListener("click", () => {
+    showPage(ui.mainPage, ui.errorsPage);
   });
 
-  clearErrorsBtn.addEventListener("click", async () => {
+  ui.clearErrorsBtn.addEventListener("click", async () => {
     try {
       await chrome.runtime.sendMessage({ type: "clearInsertionErrors" });
-      console.log("Errors cleared.");
+      console.log("Erreurs effacées avec succès.");
       showErrorsInPopup([]);
     } catch (error) {
-      console.error("Could not clear errors:", error.message);
+      console.error("Impossible d'effacer les erreurs:", error.message);
     }
   });
 
-  function showErrorsInPopup(errors) {
-    const errorList = document.getElementById("errorList");
-    errorList.innerHTML = "";
+  // === Gestion de l'Affichage des Erreurs ===
 
-    if (!errors) return;
-
+  /**
+   * Regroupe les erreurs par type (doublon, manquant, etc.).
+   * @param {Array<object>} errors - La liste des erreurs brutes.
+   * @returns {{duplicate: Array, mandatoryMissing: Array, optionalMissing: Array}}
+   */
+  function groupErrorsByType(errors) {
     const grouped = {
       duplicate: [],
       mandatoryMissing: [],
       optionalMissing: []
     };
+    errors.forEach(err => grouped[err.type]?.push(err));
+    return grouped;
+  }
 
-    for (const err of errors) {
-      grouped[err.type].push(err);
+  /**
+   * Crée un lien cliquable pour une erreur (profil ou onglet).
+   * @param {string} text - Le texte du lien.
+   * @param {function} onClick - La fonction à exécuter au clic.
+   * @returns {HTMLAnchorElement}
+   */
+  function createErrorLink(text, onClick) {
+    const link = document.createElement("a");
+    link.href = "#";
+    link.textContent = text;
+    link.className = "error-link";
+    link.addEventListener("click", (e) => {
+      e.preventDefault();
+      onClick();
+    });
+    return link;
+  }
+
+  /**
+   * Crée le contenu textuel d'un item d'erreur, y compris les liens.
+   * @param {object} err - L'objet d'erreur.
+   * @returns {HTMLSpanElement}
+   */
+  function createErrorContentSpan(err) {
+    const { name, reason, profileUrl, source, tabId } = err;
+    const contentSpan = document.createElement("span");
+    contentSpan.className = "error-text";
+    contentSpan.appendChild(document.createTextNode(`${name} - ${reason} (`));
+
+    if (profileUrl && source) {
+      contentSpan.appendChild(createErrorLink(`Voir profil ${source}`, () => chrome.tabs.create({ url: profileUrl })));
+    }
+    if (profileUrl && tabId) {
+      contentSpan.appendChild(document.createTextNode(" / "));
+    }
+    if (tabId) {
+      contentSpan.appendChild(createErrorLink("Aller à l'onglet", () => chrome.tabs.update(tabId, { active: true })));
     }
 
-    for (const [type, list] of Object.entries(grouped)) {
-      if (list.length === 0) continue;
+    contentSpan.appendChild(document.createTextNode(")"));
+    return contentSpan;
+  }
 
-      const title = {
+  /**
+   * Crée les boutons d'action (supprimer, confirmer, annuler) pour une erreur.
+   * @param {string} errorId - L'ID de l'erreur.
+   * @returns {HTMLSpanElement}
+   */
+  function createErrorActionsSpan(errorId) {
+    const actionsSpan = document.createElement('span');
+    actionsSpan.className = 'error-actions';
+    actionsSpan.innerHTML = `
+      <span class="delete-initiate" title="Supprimer">&times;</span>
+      <span class="delete-confirm" title="Confirmer" style="display: none;">&#10003;</span>
+      <span class="delete-cancel" title="Annuler" style="display: none;">&times;</span>
+    `;
+    setupErrorDeletionListeners(actionsSpan, errorId);
+    return actionsSpan;
+  }
+
+  /**
+   * Attache les écouteurs d'événements pour la logique de suppression d'une erreur.
+   * @param {HTMLSpanElement} actionsSpan - Le conteneur des boutons d'action.
+   * @param {string} errorId - L'ID de l'erreur à supprimer.
+   */
+  function setupErrorDeletionListeners(actionsSpan, errorId) {
+    const delInitiate = actionsSpan.querySelector('.delete-initiate');
+    const delConfirm = actionsSpan.querySelector('.delete-confirm');
+    const delCancel = actionsSpan.querySelector('.delete-cancel');
+
+    delInitiate.addEventListener('click', () => {
+      delInitiate.style.display = 'none';
+      delConfirm.style.display = 'inline';
+      delCancel.style.display = 'inline';
+    });
+
+    delCancel.addEventListener('click', () => {
+      delInitiate.style.display = 'inline';
+      delConfirm.style.display = 'none';
+      delCancel.style.display = 'none';
+    });
+
+    delConfirm.addEventListener('click', async () => {
+      try {
+        await chrome.runtime.sendMessage({ type: "removeSingleError", payload: { errorId } });
+        const errors = await chrome.runtime.sendMessage({ type: "getInsertionErrors" });
+        showErrorsInPopup(errors || []);
+      } catch (error) {
+        console.error("Erreur lors de la suppression de l'erreur :", error.message);
+      }
+    });
+  }
+
+  /**
+   * Affiche la liste des erreurs dans la popup.
+   * @param {Array<object>} errors - La liste des erreurs à afficher.
+   */
+  function showErrorsInPopup(errors) {
+    ui.errorListDiv.innerHTML = "";
+    if (!errors || errors.length === 0) return;
+
+    const groupedErrors = groupErrorsByType(errors);
+
+    Object.entries(groupedErrors).forEach(([type, list]) => {
+      if (list.length === 0) return;
+
+      const titleText = {
         duplicate: "Candidats déjà existants :",
         mandatoryMissing: "Données impératives manquantes :",
-        optionalMissing: "Données facultatives manquantes :"
+        optionalMissing: "Données facultatives manquantes :",
       }[type];
 
       const groupDiv = document.createElement("div");
-      groupDiv.innerHTML = `<strong>${title}</strong><ul style="margin-top: 4px;"></ul>`;
+      groupDiv.innerHTML = `<strong>${titleText}</strong><ul style="margin-top: 4px;"></ul>`;
       const ul = groupDiv.querySelector("ul");
 
-      for (const err of list) {
-        const { id, name, reason, profileUrl, source, tabId } = err;
-
+      list.forEach(err => {
         const li = document.createElement("li");
-        const contentSpan = document.createElement("span");
-        contentSpan.className = "error-text";
-
-        contentSpan.appendChild(document.createTextNode(`${name} - ${reason} (`));
-
-        // 1. Create link to the candidate's profile
-        if (profileUrl && source) {
-          const profileLink = document.createElement("a");
-          profileLink.href = "#"; // Use JS for navigation
-          profileLink.textContent = `Voir profil ${source}`;
-          profileLink.className = "error-link";
-          profileLink.addEventListener("click", (e) => {
-            e.preventDefault();
-            chrome.tabs.create({ url: profileUrl, active: true });
-          });
-          contentSpan.appendChild(profileLink);
-        }
-
-        // Add a separator if both links are present
-        if (profileUrl && tabId) {
-          contentSpan.appendChild(document.createTextNode(" / "));
-        }
-
-        // 2. Create link to switch to the form tab
-        if (tabId) {
-          const tabLink = document.createElement("a");
-          tabLink.href = "#"; // Use JS for navigation
-          tabLink.textContent = "Aller à l'onglet";
-          tabLink.className = "error-link";
-          tabLink.addEventListener("click", (e) => {
-            e.preventDefault();
-            chrome.tabs.update(tabId, { active: true });
-            chrome.tabs.get(tabId, (tab) => {
-              if (tab.windowId) chrome.windows.update(tab.windowId, { focused: true });
-            });
-          });
-          contentSpan.appendChild(tabLink);
-        }
-
-        contentSpan.appendChild(document.createTextNode(")"));
-        li.appendChild(contentSpan);
-
-        // 3. Create the action buttons for deletion
-        const actionsSpan = document.createElement('span');
-        actionsSpan.className = 'error-actions';
-        actionsSpan.innerHTML = `
-          <span class="delete-initiate" title="Supprimer">&times;</span>
-          <span class="delete-confirm" title="Confirmer" style="display: none;">&#10003;</span>
-          <span class="delete-cancel" title="Annuler" style="display: none;">&times;</span>
-        `;
-
-        const deleteInitiate = actionsSpan.querySelector('.delete-initiate');
-        const deleteConfirm = actionsSpan.querySelector('.delete-confirm');
-        const deleteCancel = actionsSpan.querySelector('.delete-cancel');
-
-        deleteInitiate.addEventListener('click', () => {
-          deleteInitiate.style.display = 'none';
-          deleteConfirm.style.display = 'inline';
-          deleteCancel.style.display = 'inline';
-        });
-
-        deleteCancel.addEventListener('click', () => {
-          deleteInitiate.style.display = 'inline';
-          deleteConfirm.style.display = 'none';
-          deleteCancel.style.display = 'none';
-        });
-
-        deleteConfirm.addEventListener('click', async () => {
-          deleteConfirm.style.pointerEvents = 'none';
-          deleteCancel.style.pointerEvents = 'none';
-
-          try {
-            const response = await chrome.runtime.sendMessage({ type: "removeSingleError", payload: { errorId: id } });
-            if (response?.status === 'success') {
-              const errors = await chrome.runtime.sendMessage({ type: "getInsertionErrors" });
-              showErrorsInPopup(errors || []);
-            }
-          } catch (error) {
-            console.error("Error removing single error:", error.message);
-            deleteConfirm.style.pointerEvents = 'auto';
-            deleteCancel.style.pointerEvents = 'auto';
-          }
-        });
-
-        li.appendChild(actionsSpan);
+        li.appendChild(createErrorContentSpan(err));
+        li.appendChild(createErrorActionsSpan(err.id));
         ul.appendChild(li);
-      }
+      });
 
-      errorList.appendChild(groupDiv);
-    }
+      ui.errorListDiv.appendChild(groupDiv);
+    });
   }
 });
